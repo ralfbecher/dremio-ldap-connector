@@ -57,6 +57,7 @@ relational_algebra:
         enable: false
       count_distinct:
         enable: false
+    functions: []
 
   except:
     enable: false
