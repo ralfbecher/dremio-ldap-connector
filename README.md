@@ -12,7 +12,7 @@ This connector uses the **open-source [OpenLDAP JDBC-LDAP Bridge Driver](https:/
 
 ## Configuration
 
-Edit `pom.xml` and replace `{VERSION}` with your Dremio version, e.g., `25.1.1-202409260159070462-716c0676`
+The connector is pre-configured for Dremio 25.2.0. To use a different Dremio version, edit `pom.xml` and update the `dremio.version` property with your version string (e.g., `25.1.1-202409260159070462-716c0676`).
 
 ## Build and Installation
 
@@ -48,7 +48,7 @@ mvn clean install
 
 1. Copy the connector JAR (from `target/`) to Dremio's `/jars/` directory:
    ```bash
-   docker cp target/dremio-ldaparp-plugin-{VERSION}.jar dremio:/opt/dremio/jars/
+   docker cp target/dremio-ldap-plugin-25.2.0.jar dremio:/opt/dremio/jars/
    ```
 
 2. Copy the JDBC-LDAP driver JAR to Dremio's `/jars/3rdparty/` directory:
