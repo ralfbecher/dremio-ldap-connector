@@ -4,20 +4,48 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.dremio.plugin</groupId>
-  <version>{VERSION}</version>
-  <artifactId>dremio-ldaparp-plugin</artifactId>
-  <name>Dremio LDAP ARP Connector</name>
+  <version>25.2.0</version>
+  <artifactId>dremio-ldap-plugin</artifactId>
+  <name>Dremio LDAP ARP Connector (OpenLDAP)</name>
+  <description>Dremio ARP connector for LDAP using the open-source OpenLDAP JDBC-LDAP Bridge driver</description>
 
   <properties>
-    <version.dremio>{VERSION}</version.dremio>
+    <dremio.version>25.2.0-202410241428100111-a963b970</dremio.version>
   </properties>
 
   <dependencies>
     <dependency>
       <groupId>com.dremio.community.plugins</groupId>
       <artifactId>dremio-ce-jdbc-plugin</artifactId>
-      <version>${version.dremio}</version>
+      <version>${dremio.version}</version>
     </dependency>
+    <!--
+      OpenLDAP JDBC-LDAP Bridge Driver
+      This driver is not available in Maven Central. You must install it manually:
+
+      Option 1: Install from GitHub release
+        1. Clone: git clone https://github.com/zoesolutions/openldap-jdbcldap.git
+        2. Build: cd openldap-jdbcldap && ant
+        3. Install to local Maven repo:
+           mvn install:install-file -Dfile=dist/jdbcLdap.jar \
+               -DgroupId=com.octetstring -DartifactId=jdbcLdap \
+               -Dversion=1.0 -Dpackaging=jar
+
+      Option 2: Install from OpenLDAP source
+        1. Clone: git clone https://git.openldap.org/openldap/jdbcldap.git
+        2. Build with Ant
+        3. Install JAR to local repo as shown above
+
+      After installation, uncomment the dependency below:
+    -->
+    <!--
+    <dependency>
+      <groupId>com.octetstring</groupId>
+      <artifactId>jdbcLdap</artifactId>
+      <version>1.0</version>
+      <scope>provided</scope>
+    </dependency>
+    -->
   </dependencies>
 
   <build>
@@ -45,12 +73,11 @@
   <repositories>
     <repository>
       <id>dremio-public</id>
-      <url>http://maven.dremio.com/public/</url>
+      <url>https://maven.dremio.com/public/</url>
     </repository>
     <repository>
       <id>dremio-free</id>
-      <url>http://maven.dremio.com/free/</url>
+      <url>https://maven.dremio.com/free/</url>
     </repository>
   </repositories>
 </project>
-

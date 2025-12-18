@@ -7,7 +7,6 @@ import org.hibernate.validator.constraints.NotBlank;
 import com.dremio.exec.store.jdbc.*;
 import com.dremio.options.OptionManager;
 import com.dremio.services.credentials.CredentialsService;
-import org.apache.log4j.Logger;
 import com.dremio.exec.catalog.conf.DisplayMetadata;
 import com.dremio.exec.catalog.conf.NotMetadataImpacting;
 import com.dremio.exec.catalog.conf.Secret;
@@ -19,38 +18,90 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.annotations.VisibleForTesting;
 import io.protostuff.Tag;
 
-@SourceType(value = "LDAPARP", label = "LDAP",uiConfig = "ldap-layout.json")
+/**
+ * Configuration for the OpenLDAP JDBC-LDAP Bridge connector.
+ * Uses the open-source JDBC-LDAP driver from OpenLDAP.
+ * @see <a href="https://www.openldap.org/jdbcldap/">OpenLDAP JDBC-LDAP</a>
+ */
+@SourceType(value = "LDAPARP", label = "LDAP", uiConfig = "ldap-layout.json")
 public class LDAPConf extends AbstractArpConf<LDAPConf> {
   private static final String ARP_FILENAME = "arp/implementation/ldap-arp.yaml";
   private static final ArpDialect ARP_DIALECT =
       AbstractArpConf.loadArpFile(ARP_FILENAME, (ArpDialect::new));
-  private static final String DRIVER = "cdata.jdbc.ldap.LDAPDriver";
+  private static final String DRIVER = "com.octetstring.jdbcLdap.sql.JdbcLdapDriver";
 
   @NotBlank
   @Tag(1)
-  @DisplayMetadata(label = "Connection String")
-  public String connString;
-  
+  @DisplayMetadata(label = "LDAP Host")
+  public String host;
+
   @Tag(2)
+  @DisplayMetadata(label = "Port")
+  public int port = 389;
+
+  @NotBlank
+  @Tag(3)
+  @DisplayMetadata(label = "Base DN")
+  public String baseDN;
+
+  @Tag(4)
+  @DisplayMetadata(label = "Bind DN (User)")
+  public String bindDN = "";
+
+  @Tag(5)
+  @Secret
+  @DisplayMetadata(label = "Password")
+  public String password = "";
+
+  @Tag(6)
+  @DisplayMetadata(label = "Use SSL")
+  @NotMetadataImpacting
+  public boolean useSSL = false;
+
+  @Tag(7)
+  @DisplayMetadata(label = "Search Scope")
+  @NotMetadataImpacting
+  public String searchScope = "subTreeScope";
+
+  @Tag(8)
   @DisplayMetadata(label = "Record fetch size")
   @NotMetadataImpacting
   public int fetchSize = 200;
-  
-  @Tag(3)
+
+  @Tag(9)
   @DisplayMetadata(label = "Maximum idle connections")
   @NotMetadataImpacting
   public int maxIdleConns = 8;
 
-  @Tag(4)
+  @Tag(10)
   @DisplayMetadata(label = "Connection idle time (s)")
   @NotMetadataImpacting
   public int idleTimeSec = 60;
 
-  
   @VisibleForTesting
   public String toJdbcConnectionString() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("jdbc:ldap://");
+    sb.append(host);
+    sb.append(":");
+    sb.append(port);
+    sb.append("/");
+    sb.append(baseDN);
+    sb.append("?SEARCH_SCOPE:=").append(searchScope);
 
-    return this.connString;
+    if (useSSL) {
+      sb.append("&SECURITY_PROTOCOL:=ssl");
+    }
+
+    if (bindDN != null && !bindDN.isEmpty()) {
+      sb.append("&SECURITY_PRINCIPAL:=").append(bindDN);
+    }
+
+    if (password != null && !password.isEmpty()) {
+      sb.append("&SECURITY_CREDENTIALS:=").append(password);
+    }
+
+    return sb.toString();
   }
 
   @Override

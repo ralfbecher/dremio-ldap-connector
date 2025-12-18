@@ -1,25 +1,31 @@
 metadata:
-  # Manually Configured Metadata Section.
+  # OpenLDAP JDBC-LDAP Bridge Driver ARP Configuration
+  # https://www.openldap.org/jdbcldap/
   name: LDAPARP
   apiname: ldap
   spec_version: '1'
 
 syntax:
-  # Manually Configured Syntax Section.
+  # The OpenLDAP JDBC-LDAP driver uses standard SQL-like syntax
   identifier_quote: '"'
   identifier_length_limit: 128
-  allows_boolean_literal: true
+  allows_boolean_literal: false
   map_boolean_literal_to_bit: false
   supports_catalogs: false
   supports_schemas: false
 
 data_types:
   mappings:
-  # Manually Configured Data Types Mappings Section.
+  # LDAP attributes are primarily strings, but the driver maps some types
   - source:
-      name: "bit"
+      name: "VARCHAR"
     dremio:
-      name: "boolean"
+      name: "varchar"
+    required_cast_arguments: "none"
+  - source:
+      name: "INTEGER"
+    dremio:
+      name: "integer"
     required_cast_arguments: "none"
   - source:
       name: "INT"
@@ -27,86 +33,47 @@ data_types:
       name: "integer"
     required_cast_arguments: "none"
   - source:
-      name: "FLOAT"
+      name: "BOOLEAN"
     dremio:
-      name: "double"
+      name: "boolean"
     required_cast_arguments: "none"
   - source:
       name: "TIMESTAMP"
-      max_scale: 6
     dremio:
       name: "timestamp"
     required_cast_arguments: "none"
-  - source:
-      name: "DATE"
-    dremio:
-      name: "date"
-    required_cast_arguments: "none"
-  - source:
-      name: "VARCHAR"
-    dremio:
-      name: "varchar"
-    required_cast_arguments: "none"
 
 relational_algebra:
+  # The OpenLDAP JDBC-LDAP driver has limited SQL support
+  # Aggregations are handled by Dremio, not pushed down
   aggregation:
-    enable: true
+    enable: false
     group_by_ordinal: false
-    distinct: true
+    distinct: false
     count_functions:
       count_star:
-        enable: true
+        enable: false
       count:
-        enable: true
+        enable: false
       count_distinct:
-        enable: true
-    functions:
-    - names:
-      - "avg"
-      signatures:
-      - args:
-        - "double"
-        return: "double"
-      - args:
-        - "integer"
-        return: "double"
-    - names:
-      - "max"
-      - "min"
-      signatures:
-      - args:
-        - "integer"
-        return: "integer"
-      - args:
-        - "double"
-        return: "double"
-      - args:
-        - "varchar"
-        return: "varchar"
-    - names:
-      - "sum"
-      signatures:
-      - args:
-        - "double"
-        return: "double"
-      - args:
-        - "integer"
-        return: "bigint"
+        enable: false
 
   except:
     enable: false
   project:
     enable: true
   join:
-    enable: true
+    # JOINs are not supported by the JDBC-LDAP driver
+    # Dremio will handle joins locally
+    enable: false
     cross:
-      enable: true
+      enable: false
     inner:
-      enable: true
-      inequality: true
+      enable: false
+      inequality: false
     left:
-      enable: true
-      inequality: true
+      enable: false
+      inequality: false
     right:
       enable: false
       inequality: false
@@ -114,19 +81,18 @@ relational_algebra:
       enable: false
       inequality: false
   sort:
+    # Basic ORDER BY is supported
     enable: true
     order_by:
       enable: true
       default_nulls_ordering: high
     fetch_offset:
       offset_fetch:
-        enable: true
-        format: 'LIMIT {1} OFFSET {0}'
+        enable: false
       offset_only:
         enable: false
       fetch_only:
-        enable: true
-        format: 'LIMIT {0}'
+        enable: false
   union:
     enable: false
   union_all:
@@ -137,13 +103,16 @@ relational_algebra:
 
 # Describe the set of function signatures that are internally supported.
 expressions:
+  # The JDBC-LDAP driver has limited expression support
+  # Most complex operations should be handled by Dremio
   subqueries:
-    correlated: true
-    scalar: true
-    in_clause: true
-  supports_case: true
+    correlated: false
+    scalar: false
+    in_clause: false
+  supports_case: false
   supports_over: false
   operators:
+    # Basic comparison operators are supported
     - names:
       - "="
       - "!="
@@ -154,32 +123,12 @@ expressions:
       - "<="
       signatures:
       - args:
-        - "double"
-        - "double"
-        return: "boolean"
-      - args:
-        - "double"
-        - "integer"
-        return: "boolean"
-      - args:
-        - "double"
-        - "varchar"
-        return: "boolean"
-      - args:
-        - "integer"
-        - "double"
-        return: "boolean"
-      - args:
-        - "integer"
-        - "integer"
-        return: "boolean"
-      - args:
-        - "integer"
-        - "varchar"
-        return: "boolean"
-      - args:
         - "varchar"
         - "varchar"
+        return: "boolean"
+      - args:
+        - "integer"
+        - "integer"
         return: "boolean"
     - names:
       - "not"
@@ -187,7 +136,14 @@ expressions:
       - args:
         - "boolean"
         return: "boolean"
-
+    # LIKE operator for pattern matching (maps to LDAP filters)
+    - names:
+      - "like"
+      signatures:
+      - args:
+        - "varchar"
+        - "varchar"
+        return: "boolean"
 
   variable_length_operators:
     - names:

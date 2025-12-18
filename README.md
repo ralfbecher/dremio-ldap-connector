@@ -1,61 +1,117 @@
-# CData Dremio ARP Connector for LDAP
+# Dremio ARP Connector for LDAP (OpenLDAP)
 
-The LDAP connector allows Dremio to connect to and query data in LDAP. This can then allow you to build custom reports, dashboards, or even just ad-hoc SQL via your client tool of choice. Note that it does require a third-party JDBC driver that is not free, but does allow a free trial.
+The LDAP connector allows Dremio to connect to and query data in LDAP directories using SQL. This enables you to build custom reports, dashboards, or run ad-hoc SQL queries against your LDAP directory via your client tool of choice.
 
-## Edit File Contents
+This connector uses the **open-source [OpenLDAP JDBC-LDAP Bridge Driver](https://www.openldap.org/jdbcldap/)** - no commercial license required.
 
-Edit the contents of the file *pom.xml*:
+## Prerequisites
 
-* Find {VERSION} in pom.xml and replace it with your Dremio version, e.g. 25.1.1-202409260159070462-716c0676
+- Dremio 20.0.0 or later
+- Java 8 or later
+- OpenLDAP JDBC-LDAP Bridge Driver (see installation steps below)
 
-## ARP Overview
+## Configuration
 
-The Advanced Relational Pushdown (ARP) Framework allows for the creation of Dremio plugins for any data source which has a JDBC driver and accepts SQL as a query language. It allows for a mostly code-free creation of a plugin, allowing for modification of queries issued by Dremio using a configuration file.
-
-There are two files that are necessary for creation of an ARP-based plugin: the storage plugin configuration, which is code, and the plugin ARP file, which is a YAML (https://yaml.org/) file.
-
-The storage plugin configuration file tells Dremio what the name of the plugin should be, what connection options should be displayed in the source UI, what the name of the ARP file is, which JDBC driver to use and how to make a connection to the JDBC driver.
-
-The ARP YAML file is what is used to modify the SQL queries that are sent to the JDBC driver, allowing you to specify support for different data types and functions, as well as rewrite them if tweaks need to be made for your specific data source.
-
-### ARP File Format
-
-The ARP file is broken down into several sections:
-
-**metadata**
-* This section outlines some high level metadata about the plugin.
-
-**syntax**
-
-* This section allows for specifying some general syntax items like the identifier quote character.
-
-**data_types**
-
-* This section outlines which data types are supported by the plugin, their names as they appear in the JDBC driver, and how they map to Dremio types.
-
-**relational_algebra** - This section is divided up into a number of other subsections:
-
-* **aggregation**
-    * Specify what aggregate functions, such as SUM, MAX, etc, are supported and what signatures they have. You can also specify a rewrite to alter the SQL for how this is issued.
- * **except/project/join/sort/union/union_all/values**
-    * These sections indicate if the specific operation is supported or not.
- * **expressions**
-    * This section outlines general operations that are supported. The main sections are:
- * **operators**
-    * Outlines which scalar functions, such as SIN, SUBSTR, LOWER, etc, are supported, along with the signatures of these functions which are supported. Finally, you can also specify a rewrite to alter the SQL for how this is issued.
- * **variable_length_operators**
-    * The same as operators, but allows specification of functions which may have a variable number of arguments, such as AND and OR.
-
-If an operation or function is not specified in the ARP file, then Dremio will handle the operation itself. Any operations which are indicated as supported but need to be stacked on operations which are not will not be pushed down to the SQL query.
+Edit `pom.xml` and replace `{VERSION}` with your Dremio version, e.g., `25.1.1-202409260159070462-716c0676`
 
 ## Build and Installation
 
-1. Run the following command in the root directory for the Connector (the connector that contains the *pom.xml* file): `mvn clean install`
-2. Place the built JAR file (from the *target* folder) in the /jars/ directory of your Dremio installation. For example:
-    `docker cp PATH\TO\dremio-ldap-plugin-20.0.0.jar dremio_image_name:/opt/dremio/jars/`
-3. Download and install the [LDAP JDBC Driver from CData](https://www.cdata.com/drivers/access/download/jdbc)* and copy the JAR file to the /jars/3rdparty/ directory of your Dremio installation. For example:
-    `docker cp PATH\TO\cdata.jdbc.ldap.jar dremio_image_name:/opt/dremio/jars/3rdparty/`
-4. Restart Dremio
+### Step 1: Build the OpenLDAP JDBC Driver
 
-**Note: you will need a trial or paid license of the CData JDBC Driver to use the Driver in Dremio.*
+The OpenLDAP JDBC-LDAP driver is not available in Maven Central. You need to build it from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/zoesolutions/openldap-jdbcldap.git
+
+# Build with Ant
+cd openldap-jdbcldap
+ant
+
+# The JAR will be in the dist/ folder
+```
+
+Alternatively, use the official OpenLDAP source:
+```bash
+git clone https://git.openldap.org/openldap/jdbcldap.git
+cd jdbcldap
+ant
+```
+
+### Step 2: Build the Dremio Connector
+
+```bash
+mvn clean install
+```
+
+### Step 3: Deploy to Dremio
+
+1. Copy the connector JAR (from `target/`) to Dremio's `/jars/` directory:
+   ```bash
+   docker cp target/dremio-ldaparp-plugin-{VERSION}.jar dremio:/opt/dremio/jars/
+   ```
+
+2. Copy the JDBC-LDAP driver JAR to Dremio's `/jars/3rdparty/` directory:
+   ```bash
+   docker cp openldap-jdbcldap/dist/jdbcLdap.jar dremio:/opt/dremio/jars/3rdparty/
+   ```
+
+3. Restart Dremio
+
+## Usage
+
+After installation, add a new LDAP source in Dremio with the following configuration:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| LDAP Host | LDAP server hostname | `ldap.example.com` |
+| Port | LDAP port (389 for LDAP, 636 for LDAPS) | `389` |
+| Base DN | Base Distinguished Name for searches | `dc=example,dc=com` |
+| Bind DN | User DN for authentication (optional) | `cn=admin,dc=example,dc=com` |
+| Password | Password for authentication | |
+| Use SSL | Enable SSL/TLS connection | `false` |
+| Search Scope | `subTreeScope`, `oneLevelScope`, or `baseScope` | `subTreeScope` |
+
+### Example Queries
+
+```sql
+-- List all users
+SELECT * FROM ldap.Users
+
+-- Find specific user
+SELECT cn, mail, telephoneNumber
+FROM ldap.Users
+WHERE uid = 'jdoe'
+
+-- Search by pattern
+SELECT cn, mail
+FROM ldap.Users
+WHERE cn LIKE 'John%'
+```
+
+## Limitations
+
+The OpenLDAP JDBC-LDAP driver has more limited SQL support compared to commercial drivers:
+
+- **No JOINs pushed down** - Dremio handles joins locally
+- **No aggregations pushed down** - COUNT, SUM, etc. are computed by Dremio
+- **No subqueries** - Subqueries are processed by Dremio
+- **Basic filtering** - Equality, comparison, LIKE, AND, OR operators are supported
+
+These limitations don't affect functionality - Dremio automatically handles unsupported operations locally.
+
+## ARP Overview
+
+This connector uses the Advanced Relational Pushdown (ARP) Framework. The ARP configuration is in `src/main/resources/arp/implementation/ldap-arp.yaml` and defines:
+
+- **Data type mappings** between LDAP and Dremio
+- **Supported SQL operations** that can be pushed to the JDBC driver
+- **Query syntax** customizations
+
+## Resources
+
+- [OpenLDAP JDBC-LDAP Documentation](https://www.openldap.org/jdbcldap/)
+- [OpenLDAP JDBC-LDAP Source (GitHub)](https://github.com/zoesolutions/openldap-jdbcldap)
+- [OpenLDAP JDBC-LDAP Source (Official)](https://git.openldap.org/openldap/jdbcldap)
+- [Dremio ARP Framework Documentation](https://www.dremio.com/)
 

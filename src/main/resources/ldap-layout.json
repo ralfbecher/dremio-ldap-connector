@@ -10,11 +10,67 @@
         "isGeneral": true,
         "sections": [
           {
-            "name": "LDAP Source",
-            "layout": "row",
+            "name": "Connection",
             "elements": [
-                {
-                }
+              {
+                "propName": "host",
+                "placeholder": "ldap.example.com"
+              },
+              {
+                "propName": "port"
+              },
+              {
+                "propName": "baseDN",
+                "placeholder": "dc=example,dc=com"
+              },
+              {
+                "propName": "useSSL"
+              }
+            ]
+          },
+          {
+            "name": "Authentication",
+            "elements": [
+              {
+                "propName": "bindDN",
+                "placeholder": "cn=admin,dc=example,dc=com"
+              },
+              {
+                "propName": "password"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Advanced Options",
+        "sections": [
+          {
+            "name": "Search Options",
+            "elements": [
+              {
+                "propName": "searchScope",
+                "uiType": "container_selection",
+                "options": [
+                  {"value": "subTreeScope", "label": "Subtree (recursive)"},
+                  {"value": "oneLevelScope", "label": "One Level"},
+                  {"value": "baseScope", "label": "Base Object Only"}
+                ]
+              }
+            ]
+          },
+          {
+            "name": "Connection Pool",
+            "elements": [
+              {
+                "propName": "fetchSize"
+              },
+              {
+                "propName": "maxIdleConns"
+              },
+              {
+                "propName": "idleTimeSec"
+              }
             ]
           }
         ]
