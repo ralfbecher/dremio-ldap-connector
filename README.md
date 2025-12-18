@@ -18,11 +18,11 @@ The connector is pre-configured for Dremio 25.2.0. To use a different Dremio ver
 
 ### Step 1: Build the OpenLDAP JDBC Driver
 
-The OpenLDAP JDBC-LDAP driver is not available in Maven Central. You need to build it from source:
+The OpenLDAP JDBC-LDAP driver is not available in Maven Central. You need to build it from source using Ant:
 
 ```bash
 # Clone the repository
-git clone https://github.com/zoesolutions/openldap-jdbcldap.git
+git clone https://github.com/ralfbecher/openldap-jdbcldap.git
 
 # Build with Ant
 cd openldap-jdbcldap
@@ -31,12 +31,7 @@ ant
 # The JAR will be in the dist/ folder
 ```
 
-Alternatively, use the official OpenLDAP source:
-```bash
-git clone https://git.openldap.org/openldap/jdbcldap.git
-cd jdbcldap
-ant
-```
+See [openldap-jdbcldap](https://github.com/ralfbecher/openldap-jdbcldap) for more details.
 
 ### Step 2: Build the Dremio Connector
 
@@ -110,8 +105,7 @@ This connector uses the Advanced Relational Pushdown (ARP) Framework. The ARP co
 
 ## Resources
 
+- [OpenLDAP JDBC-LDAP Driver](https://github.com/ralfbecher/openldap-jdbcldap)
 - [OpenLDAP JDBC-LDAP Documentation](https://www.openldap.org/jdbcldap/)
-- [OpenLDAP JDBC-LDAP Source (GitHub)](https://github.com/zoesolutions/openldap-jdbcldap)
-- [OpenLDAP JDBC-LDAP Source (Official)](https://git.openldap.org/openldap/jdbcldap)
 - [Dremio ARP Framework Documentation](https://www.dremio.com/)
 
