@@ -81,6 +81,11 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
   @NotMetadataImpacting
   public int idleTimeSec = 60;
 
+  @Tag(11)
+  @DisplayMetadata(label = "Object Classes (comma-separated)")
+  @NotMetadataImpacting
+  public String objectClasses = "person,organizationalUnit,groupOfNames,inetOrgPerson";
+
   @VisibleForTesting
   public String toJdbcConnectionString() {
     StringBuilder sb = new StringBuilder();
@@ -102,6 +107,11 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
 
     if (password != null && !password.isEmpty()) {
       sb.append("&SECURITY_CREDENTIALS:=").append(password);
+    }
+
+    // Pass object classes as a custom parameter for schema discovery
+    if (objectClasses != null && !objectClasses.isEmpty()) {
+      sb.append("&OBJECT_CLASSES:=").append(objectClasses);
     }
 
     return sb.toString();

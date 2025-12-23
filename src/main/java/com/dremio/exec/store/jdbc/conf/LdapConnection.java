@@ -16,9 +16,26 @@ import java.util.concurrent.Executor;
  */
 public class LdapConnection implements Connection {
     private final Connection delegate;
+    private final String[] objectClasses;
 
-    public LdapConnection(Connection delegate) {
+    public LdapConnection(Connection delegate, String objectClassesParam) {
         this.delegate = delegate;
+        // Parse object classes from the parameter
+        if (objectClassesParam != null && !objectClassesParam.isEmpty()) {
+            this.objectClasses = objectClassesParam.split(",");
+            for (int i = 0; i < this.objectClasses.length; i++) {
+                this.objectClasses[i] = this.objectClasses[i].trim();
+            }
+        } else {
+            this.objectClasses = new String[0];
+        }
+    }
+
+    /**
+     * Get the configured LDAP object classes to expose as tables.
+     */
+    public String[] getObjectClasses() {
+        return objectClasses;
     }
 
     // Transaction methods - silently ignore
@@ -108,7 +125,8 @@ public class LdapConnection implements Connection {
     @Override
     public DatabaseMetaData getMetaData() throws SQLException {
         // Wrap the metadata to handle null returns from the LDAP driver
-        return new LdapDatabaseMetaData(delegate.getMetaData(), this);
+        // and to expose configured object classes as tables
+        return new LdapDatabaseMetaData(delegate.getMetaData(), this, objectClasses);
     }
 
     @Override

@@ -49,11 +49,38 @@ public class LdapDriver implements Driver {
         if (!acceptsURL(url)) {
             return null;
         }
+
+        // Extract OBJECT_CLASSES parameter from URL
+        String objectClasses = extractParameter(url, "OBJECT_CLASSES");
+
         Connection rawConnection = delegate.connect(url, info);
         if (rawConnection == null) {
             return null;
         }
-        return new LdapConnection(rawConnection);
+        return new LdapConnection(rawConnection, objectClasses);
+    }
+
+    /**
+     * Extract a parameter value from the JDBC URL.
+     * Parameters are in format: &PARAM_NAME:=value
+     */
+    private String extractParameter(String url, String paramName) {
+        String searchPattern = "&" + paramName + ":=";
+        int startIndex = url.indexOf(searchPattern);
+        if (startIndex == -1) {
+            // Also try with ? prefix for first parameter
+            searchPattern = "?" + paramName + ":=";
+            startIndex = url.indexOf(searchPattern);
+        }
+        if (startIndex == -1) {
+            return null;
+        }
+        startIndex += searchPattern.length();
+        int endIndex = url.indexOf("&", startIndex);
+        if (endIndex == -1) {
+            endIndex = url.length();
+        }
+        return url.substring(startIndex, endIndex);
     }
 
     @Override

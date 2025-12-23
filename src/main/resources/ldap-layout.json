@@ -56,6 +56,11 @@
                   {"value": "oneLevelScope", "label": "One Level"},
                   {"value": "baseScope", "label": "Base Object Only"}
                 ]
+              },
+              {
+                "propName": "objectClasses",
+                "placeholder": "person,organizationalUnit,groupOfNames,inetOrgPerson",
+                "help": {"position": "bottom", "text": "LDAP object classes to expose as tables (comma-separated)"}
               }
             ]
           },

@@ -9,32 +9,36 @@ import java.sql.*;
  * The LDAP JDBC driver returns null for several metadata methods that
  * Dremio expects to return valid ResultSets. This wrapper intercepts
  * those calls and returns appropriate non-null values.
+ *
+ * Additionally, this wrapper exposes configured LDAP object classes as tables,
+ * since the LDAP driver doesn't implement table discovery.
  */
 public class LdapDatabaseMetaData implements DatabaseMetaData {
     private final DatabaseMetaData delegate;
     private final Connection connection;
+    private final String[] objectClasses;
 
-    public LdapDatabaseMetaData(DatabaseMetaData delegate, Connection connection) {
+    public LdapDatabaseMetaData(DatabaseMetaData delegate, Connection connection, String[] objectClasses) {
         this.delegate = delegate;
         this.connection = connection;
+        this.objectClasses = objectClasses != null ? objectClasses : new String[0];
     }
 
     @Override
     public ResultSet getTableTypes() throws SQLException {
-        ResultSet rs = delegate.getTableTypes();
-        if (rs == null) {
-            // Return an empty result set with the expected schema
-            // Dremio expects at least the TABLE_TYPE column
-            return new EmptyResultSet(new String[]{"TABLE_TYPE"});
-        }
-        return rs;
+        // Return TABLE as the only supported type
+        return new SingleValueResultSet("TABLE_TYPE", "TABLE");
     }
 
     @Override
     public ResultSet getTables(String catalog, String schemaPattern, String tableNamePattern, String[] types) throws SQLException {
+        // Return configured object classes as tables
+        if (objectClasses.length > 0) {
+            return new ObjectClassResultSet(objectClasses, tableNamePattern);
+        }
+        // Fall back to delegate if no object classes configured
         ResultSet rs = delegate.getTables(catalog, schemaPattern, tableNamePattern, types);
         if (rs == null) {
-            // Return an empty result set
             return new EmptyResultSet(new String[]{"TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "TABLE_TYPE", "REMARKS"});
         }
         return rs;
