@@ -107,7 +107,8 @@ public class LdapConnection implements Connection {
 
     @Override
     public DatabaseMetaData getMetaData() throws SQLException {
-        return delegate.getMetaData();
+        // Wrap the metadata to handle null returns from the LDAP driver
+        return new LdapDatabaseMetaData(delegate.getMetaData(), this);
     }
 
     @Override
