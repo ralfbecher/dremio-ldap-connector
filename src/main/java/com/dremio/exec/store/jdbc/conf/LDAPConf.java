@@ -28,7 +28,10 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
   private static final String ARP_FILENAME = "arp/implementation/ldap-arp.yaml";
   private static final ArpDialect ARP_DIALECT =
       AbstractArpConf.loadArpFile(ARP_FILENAME, (ArpDialect::new));
-  private static final String DRIVER = "com.octetstring.jdbcLdap.sql.JdbcLdapDriver";
+  // Use our LdapDriver wrapper instead of the raw LDAP driver.
+  // LdapDriver wraps connections with LdapConnection, which silently ignores
+  // transaction-related calls that DBCP2 makes during pool initialization.
+  private static final String DRIVER = "com.dremio.exec.store.jdbc.conf.LdapDriver";
 
   @NotBlank
   @Tag(1)
@@ -116,16 +119,11 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
   }
 
   private CloseableDataSource newDataSource() {
-      // Use FORCE_AUTO_COMMIT_MODE because LDAP does not support transactions.
-      // This prevents DBCP2 from calling rollback() during connection passivation,
-      // which would fail with "LDAP Does Not Support Transactions" error.
-      //
-      // Additionally, wrap the DataSource with LdapDataSource to intercept
-      // setAutoCommit() calls from DBCP2's PoolableConnectionFactory.activateObject(),
-      // which also fail because LDAP doesn't support transaction management.
-      CloseableDataSource pooledDataSource = DataSources.newGenericConnectionPoolDataSource(DRIVER,
+      // LdapDriver returns LdapConnection instances that silently ignore
+      // transaction-related calls (setAutoCommit, commit, rollback).
+      // This prevents DBCP2 from failing during pool initialization and validation.
+      return DataSources.newGenericConnectionPoolDataSource(DRIVER,
           toJdbcConnectionString(), "", "", null, DataSources.CommitMode.FORCE_AUTO_COMMIT_MODE, maxIdleConns, idleTimeSec);
-      return new LdapDataSource(pooledDataSource);
   }
 
   @Override
