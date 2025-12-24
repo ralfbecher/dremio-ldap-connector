@@ -17,11 +17,13 @@ public class LdapDatabaseMetaData implements DatabaseMetaData {
     private final DatabaseMetaData delegate;
     private final Connection connection;
     private final String[] objectClasses;
+    private final String[] attributes;
 
-    public LdapDatabaseMetaData(DatabaseMetaData delegate, Connection connection, String[] objectClasses) {
+    public LdapDatabaseMetaData(DatabaseMetaData delegate, Connection connection, String[] objectClasses, String[] attributes) {
         this.delegate = delegate;
         this.connection = connection;
         this.objectClasses = objectClasses != null ? objectClasses : new String[0];
+        this.attributes = attributes != null ? attributes : new String[0];
     }
 
     @Override
@@ -73,6 +75,11 @@ public class LdapDatabaseMetaData implements DatabaseMetaData {
 
     @Override
     public ResultSet getColumns(String catalog, String schemaPattern, String tableNamePattern, String columnNamePattern) throws SQLException {
+        // Return configured attributes as columns for all tables
+        if (attributes.length > 0) {
+            return new AttributeResultSet(attributes, tableNamePattern, columnNamePattern);
+        }
+        // Fall back to delegate if no attributes configured
         ResultSet rs = delegate.getColumns(catalog, schemaPattern, tableNamePattern, columnNamePattern);
         if (rs == null) {
             return new EmptyResultSet(new String[]{"TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "TYPE_NAME"});

@@ -61,6 +61,11 @@
                 "propName": "objectClasses",
                 "placeholder": "person,organizationalUnit,groupOfNames,inetOrgPerson",
                 "help": {"position": "bottom", "text": "LDAP object classes to expose as tables (comma-separated)"}
+              },
+              {
+                "propName": "attributes",
+                "placeholder": "dn,cn,objectClass,sn,givenName,mail,uid",
+                "help": {"position": "bottom", "text": "LDAP attributes to expose as columns (comma-separated)"}
               }
             ]
           },

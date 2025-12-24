@@ -86,6 +86,11 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
   @NotMetadataImpacting
   public String objectClasses = "person,organizationalUnit,groupOfNames,inetOrgPerson";
 
+  @Tag(12)
+  @DisplayMetadata(label = "Attributes (comma-separated)")
+  @NotMetadataImpacting
+  public String attributes = "dn,cn,objectClass,sn,givenName,mail,uid,memberOf,member,description";
+
   @VisibleForTesting
   public String toJdbcConnectionString() {
     StringBuilder sb = new StringBuilder();
@@ -112,6 +117,11 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
     // Pass object classes as a custom parameter for schema discovery
     if (objectClasses != null && !objectClasses.isEmpty()) {
       sb.append("&OBJECT_CLASSES:=").append(objectClasses);
+    }
+
+    // Pass attributes as a custom parameter for column discovery
+    if (attributes != null && !attributes.isEmpty()) {
+      sb.append("&ATTRIBUTES:=").append(attributes);
     }
 
     return sb.toString();

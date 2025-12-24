@@ -50,14 +50,15 @@ public class LdapDriver implements Driver {
             return null;
         }
 
-        // Extract OBJECT_CLASSES parameter from URL
+        // Extract OBJECT_CLASSES and ATTRIBUTES parameters from URL
         String objectClasses = extractParameter(url, "OBJECT_CLASSES");
+        String attributes = extractParameter(url, "ATTRIBUTES");
 
         Connection rawConnection = delegate.connect(url, info);
         if (rawConnection == null) {
             return null;
         }
-        return new LdapConnection(rawConnection, objectClasses);
+        return new LdapConnection(rawConnection, objectClasses, attributes);
     }
 
     /**

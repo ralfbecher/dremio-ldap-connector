@@ -17,8 +17,9 @@ import java.util.concurrent.Executor;
 public class LdapConnection implements Connection {
     private final Connection delegate;
     private final String[] objectClasses;
+    private final String[] attributes;
 
-    public LdapConnection(Connection delegate, String objectClassesParam) {
+    public LdapConnection(Connection delegate, String objectClassesParam, String attributesParam) {
         this.delegate = delegate;
         // Parse object classes from the parameter
         if (objectClassesParam != null && !objectClassesParam.isEmpty()) {
@@ -29,6 +30,15 @@ public class LdapConnection implements Connection {
         } else {
             this.objectClasses = new String[0];
         }
+        // Parse attributes from the parameter
+        if (attributesParam != null && !attributesParam.isEmpty()) {
+            this.attributes = attributesParam.split(",");
+            for (int i = 0; i < this.attributes.length; i++) {
+                this.attributes[i] = this.attributes[i].trim();
+            }
+        } else {
+            this.attributes = new String[0];
+        }
     }
 
     /**
@@ -36,6 +46,13 @@ public class LdapConnection implements Connection {
      */
     public String[] getObjectClasses() {
         return objectClasses;
+    }
+
+    /**
+     * Get the configured LDAP attributes to expose as columns.
+     */
+    public String[] getAttributes() {
+        return attributes;
     }
 
     // Transaction methods - silently ignore
@@ -125,8 +142,8 @@ public class LdapConnection implements Connection {
     @Override
     public DatabaseMetaData getMetaData() throws SQLException {
         // Wrap the metadata to handle null returns from the LDAP driver
-        // and to expose configured object classes as tables
-        return new LdapDatabaseMetaData(delegate.getMetaData(), this, objectClasses);
+        // and to expose configured object classes as tables and attributes as columns
+        return new LdapDatabaseMetaData(delegate.getMetaData(), this, objectClasses, attributes);
     }
 
     @Override
