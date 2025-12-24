@@ -24,9 +24,23 @@ public class ObjectClassResultSet implements ResultSet {
 
     public ObjectClassResultSet(String[] objectClasses, String tableNamePattern) {
         this.objectClasses = new ArrayList<>();
-        String pattern = tableNamePattern != null ? tableNamePattern.replace("%", ".*") : ".*";
+
+        // Handle null, empty, or wildcard patterns
+        String pattern = (tableNamePattern == null || tableNamePattern.isEmpty() || tableNamePattern.equals("%"))
+            ? null  // null means match all
+            : tableNamePattern.replace("%", ".*");
+
         for (String oc : objectClasses) {
-            if (oc != null && !oc.isEmpty() && oc.matches(pattern)) {
+            if (oc == null || oc.isEmpty()) {
+                continue;
+            }
+
+            // Match if pattern is null (match all) or matches case-insensitively
+            boolean matches = (pattern == null) ||
+                oc.equalsIgnoreCase(pattern) ||
+                oc.toLowerCase().matches("(?i)" + pattern);
+
+            if (matches) {
                 this.objectClasses.add(oc);
             }
         }

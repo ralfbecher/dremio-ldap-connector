@@ -7,6 +7,7 @@ import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.util.Properties;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -22,6 +23,7 @@ import java.util.logging.Logger;
  * LDAP connections.
  */
 public class LdapDriver implements Driver {
+    private static final Logger LOG = Logger.getLogger(LdapDriver.class.getName());
     private static final String LDAP_DRIVER_CLASS = "com.octetstring.jdbcLdap.sql.JdbcLdapDriver";
     private static final String URL_PREFIX = "jdbc:ldap:";
 
@@ -54,10 +56,17 @@ public class LdapDriver implements Driver {
         String objectClasses = extractParameter(url, "OBJECT_CLASSES");
         String attributes = extractParameter(url, "ATTRIBUTES");
 
+        LOG.log(Level.INFO, "LDAP Driver connecting with URL: " + url);
+        LOG.log(Level.INFO, "Extracted OBJECT_CLASSES: " + objectClasses);
+        LOG.log(Level.INFO, "Extracted ATTRIBUTES: " + attributes);
+
         Connection rawConnection = delegate.connect(url, info);
         if (rawConnection == null) {
+            LOG.log(Level.WARNING, "Delegate driver returned null connection");
             return null;
         }
+
+        LOG.log(Level.INFO, "Created LdapConnection wrapper");
         return new LdapConnection(rawConnection, objectClasses, attributes);
     }
 

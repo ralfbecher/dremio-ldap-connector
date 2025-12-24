@@ -1,6 +1,8 @@
 package com.dremio.exec.store.jdbc.conf;
 
 import java.sql.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A DatabaseMetaData wrapper that handles the LDAP JDBC driver's limited
@@ -14,6 +16,7 @@ import java.sql.*;
  * since the LDAP driver doesn't implement table discovery.
  */
 public class LdapDatabaseMetaData implements DatabaseMetaData {
+    private static final Logger LOG = Logger.getLogger(LdapDatabaseMetaData.class.getName());
     private final DatabaseMetaData delegate;
     private final Connection connection;
     private final String[] objectClasses;
@@ -24,6 +27,13 @@ public class LdapDatabaseMetaData implements DatabaseMetaData {
         this.connection = connection;
         this.objectClasses = objectClasses != null ? objectClasses : new String[0];
         this.attributes = attributes != null ? attributes : new String[0];
+        LOG.log(Level.INFO, "LdapDatabaseMetaData created with " + this.objectClasses.length + " object classes and " + this.attributes.length + " attributes");
+        if (this.objectClasses.length > 0) {
+            LOG.log(Level.INFO, "Object classes: " + String.join(", ", this.objectClasses));
+        }
+        if (this.attributes.length > 0) {
+            LOG.log(Level.INFO, "Attributes: " + String.join(", ", this.attributes));
+        }
     }
 
     @Override
@@ -34,11 +44,14 @@ public class LdapDatabaseMetaData implements DatabaseMetaData {
 
     @Override
     public ResultSet getTables(String catalog, String schemaPattern, String tableNamePattern, String[] types) throws SQLException {
+        LOG.log(Level.INFO, "getTables called: catalog=" + catalog + ", schema=" + schemaPattern + ", tablePattern=" + tableNamePattern);
         // Return configured object classes as tables
         if (objectClasses.length > 0) {
+            LOG.log(Level.INFO, "Returning ObjectClassResultSet with " + objectClasses.length + " object classes");
             return new ObjectClassResultSet(objectClasses, tableNamePattern);
         }
         // Fall back to delegate if no object classes configured
+        LOG.log(Level.WARNING, "No object classes configured, falling back to delegate");
         ResultSet rs = delegate.getTables(catalog, schemaPattern, tableNamePattern, types);
         if (rs == null) {
             return new EmptyResultSet(new String[]{"TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "TABLE_TYPE", "REMARKS"});
@@ -75,11 +88,17 @@ public class LdapDatabaseMetaData implements DatabaseMetaData {
 
     @Override
     public ResultSet getColumns(String catalog, String schemaPattern, String tableNamePattern, String columnNamePattern) throws SQLException {
+        LOG.log(Level.INFO, "getColumns called: catalog=" + catalog + ", schema=" + schemaPattern +
+            ", tablePattern=" + tableNamePattern + ", columnPattern=" + columnNamePattern);
         // Return configured attributes as columns for all tables (object classes)
         if (attributes.length > 0 && objectClasses.length > 0) {
-            return new AttributeResultSet(objectClasses, attributes, tableNamePattern, columnNamePattern);
+            LOG.log(Level.INFO, "Returning AttributeResultSet with " + attributes.length + " attributes for " + objectClasses.length + " tables");
+            AttributeResultSet rs = new AttributeResultSet(objectClasses, attributes, tableNamePattern, columnNamePattern);
+            LOG.log(Level.INFO, "AttributeResultSet created, checking row count...");
+            return rs;
         }
         // Fall back to delegate if no attributes configured
+        LOG.log(Level.WARNING, "No attributes or object classes configured (attrs=" + attributes.length + ", ocs=" + objectClasses.length + "), falling back to delegate");
         ResultSet rs = delegate.getColumns(catalog, schemaPattern, tableNamePattern, columnNamePattern);
         if (rs == null) {
             return new EmptyResultSet(new String[]{"TABLE_CAT", "TABLE_SCHEM", "TABLE_NAME", "COLUMN_NAME", "DATA_TYPE", "TYPE_NAME"});

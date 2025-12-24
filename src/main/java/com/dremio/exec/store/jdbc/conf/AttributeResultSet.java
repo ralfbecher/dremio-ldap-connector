@@ -32,17 +32,42 @@ public class AttributeResultSet implements ResultSet {
 
     public AttributeResultSet(String[] objectClasses, String[] attributes, String tableNamePattern, String columnNamePattern) {
         this.rows = new ArrayList<>();
-        String tablePattern = tableNamePattern != null ? tableNamePattern.replace("%", ".*") : ".*";
-        String colPattern = columnNamePattern != null ? columnNamePattern.replace("%", ".*") : ".*";
+
+        // Convert patterns to case-insensitive regex or handle null/wildcard
+        String tablePattern = (tableNamePattern == null || tableNamePattern.isEmpty() || tableNamePattern.equals("%"))
+            ? null  // null means match all
+            : tableNamePattern.replace("%", ".*");
+        String colPattern = (columnNamePattern == null || columnNamePattern.isEmpty() || columnNamePattern.equals("%"))
+            ? null  // null means match all
+            : columnNamePattern.replace("%", ".*");
 
         // Generate rows for each table + attribute combination
         for (String table : objectClasses) {
-            if (table == null || table.isEmpty() || !table.matches(tablePattern)) {
+            if (table == null || table.isEmpty()) {
                 continue;
             }
+
+            // Check if table matches pattern (case-insensitive)
+            boolean tableMatches = (tablePattern == null) ||
+                table.equalsIgnoreCase(tablePattern) ||
+                table.toLowerCase().matches("(?i)" + tablePattern);
+
+            if (!tableMatches) {
+                continue;
+            }
+
             int ordinal = 1;
             for (String attr : attributes) {
-                if (attr != null && !attr.isEmpty() && attr.matches(colPattern)) {
+                if (attr == null || attr.isEmpty()) {
+                    continue;
+                }
+
+                // Check if column matches pattern (case-insensitive)
+                boolean colMatches = (colPattern == null) ||
+                    attr.equalsIgnoreCase(colPattern) ||
+                    attr.toLowerCase().matches("(?i)" + colPattern);
+
+                if (colMatches) {
                     rows.add(new String[]{table, attr, String.valueOf(ordinal++)});
                 }
             }
