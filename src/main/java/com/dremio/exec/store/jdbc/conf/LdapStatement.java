@@ -43,7 +43,10 @@ public class LdapStatement implements Statement {
             return null;
         }
 
-        LOG.log(Level.INFO, "Original SQL: " + sql);
+        LOG.log(Level.WARNING, "=== LdapStatement transformQuery ===");
+        LOG.log(Level.WARNING, "Original SQL: " + sql);
+        LOG.log(Level.WARNING, "BaseDN: " + baseDN);
+        LOG.log(Level.WARNING, "ObjectClasses: " + String.join(",", objectClasses));
 
         Matcher matcher = FROM_PATTERN.matcher(sql);
         if (!matcher.find()) {
@@ -54,7 +57,7 @@ public class LdapStatement implements Statement {
         String tableName = matcher.group(1);
         String alias = matcher.group(2);
 
-        LOG.log(Level.INFO, "Found table: " + tableName + ", alias: " + alias);
+        LOG.log(Level.WARNING, "Found table: " + tableName + ", alias: " + alias);
 
         // Check if the table name is one of our configured objectClasses
         boolean isObjectClass = false;
@@ -68,43 +71,36 @@ public class LdapStatement implements Statement {
         }
 
         if (!isObjectClass) {
-            LOG.log(Level.INFO, "Table name '" + tableName + "' is not a configured objectClass, passing through");
+            LOG.log(Level.WARNING, "Table name '" + tableName + "' is not a configured objectClass, passing through");
             return sql;
         }
 
         // Replace the table name with baseDN and add objectClass filter
         String transformedSql = sql;
 
-        // Replace column references like "person.dn" with just "dn" (or alias.dn if alias provided)
-        String effectiveAlias = (alias != null) ? alias : tableName;
+        // Replace column references like "person.dn" with just "dn"
         transformedSql = transformedSql.replaceAll("\\b" + Pattern.quote(tableName) + "\\.", "");
         if (alias != null) {
             transformedSql = transformedSql.replaceAll("\\b" + Pattern.quote(alias) + "\\.", "");
         }
 
         // Replace FROM tableName with FROM baseDN
+        // Note: The JDBC-LDAP driver expects DNs without quotes
         String fromReplacement = "FROM " + baseDN;
         transformedSql = FROM_PATTERN.matcher(transformedSql).replaceFirst(fromReplacement);
 
         // Add objectClass filter to WHERE clause
-        String objectClassFilter = "objectClass='" + matchedObjectClass + "'";
+        // JDBC-LDAP uses standard SQL WHERE syntax which it converts to LDAP filters
+        String objectClassFilter = "objectClass = '" + matchedObjectClass + "'";
 
         if (transformedSql.toUpperCase().contains(" WHERE ")) {
             // Append to existing WHERE clause
             transformedSql = transformedSql.replaceFirst("(?i)\\bWHERE\\b", "WHERE " + objectClassFilter + " AND ");
         } else {
-            // Add new WHERE clause before any ORDER BY, GROUP BY, LIMIT, etc.
-            Pattern endPattern = Pattern.compile("(?i)(\\s+(?:ORDER\\s+BY|GROUP\\s+BY|HAVING|LIMIT|OFFSET|$))");
-            Matcher endMatcher = endPattern.matcher(transformedSql);
-            if (endMatcher.find()) {
-                int insertPos = endMatcher.start();
-                transformedSql = transformedSql.substring(0, insertPos) + " WHERE " + objectClassFilter + transformedSql.substring(insertPos);
-            } else {
-                transformedSql = transformedSql + " WHERE " + objectClassFilter;
-            }
+            transformedSql = transformedSql + " WHERE " + objectClassFilter;
         }
 
-        LOG.log(Level.INFO, "Transformed SQL: " + transformedSql);
+        LOG.log(Level.WARNING, "Transformed SQL: " + transformedSql);
         return transformedSql;
     }
 
