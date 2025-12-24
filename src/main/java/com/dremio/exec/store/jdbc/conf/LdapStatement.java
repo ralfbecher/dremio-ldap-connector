@@ -90,16 +90,9 @@ public class LdapStatement implements Statement {
         String fromReplacement = "FROM " + quotedBaseDN;
         transformedSql = FROM_PATTERN.matcher(transformedSql).replaceFirst(fromReplacement);
 
-        // Add objectClass filter to WHERE clause
-        // JDBC-LDAP uses standard SQL WHERE syntax which it converts to LDAP filters
-        String objectClassFilter = "objectClass = '" + matchedObjectClass + "'";
-
-        if (transformedSql.toUpperCase().contains(" WHERE ")) {
-            // Append to existing WHERE clause
-            transformedSql = transformedSql.replaceFirst("(?i)\\bWHERE\\b", "WHERE " + objectClassFilter + " AND ");
-        } else {
-            transformedSql = transformedSql + " WHERE " + objectClassFilter;
-        }
+        // Try without WHERE clause first to test if baseDN query works
+        // The objectClass is already determined by the table name (e.g., "person")
+        // JDBC-LDAP might handle objectClass filtering differently
 
         LOG.log(Level.WARNING, "Transformed SQL: " + transformedSql);
         return transformedSql;
