@@ -16,11 +16,13 @@ import java.util.concurrent.Executor;
  */
 public class LdapConnection implements Connection {
     private final Connection delegate;
+    private final String baseDN;
     private final String[] objectClasses;
     private final String[] attributes;
 
-    public LdapConnection(Connection delegate, String objectClassesParam, String attributesParam) {
+    public LdapConnection(Connection delegate, String baseDN, String objectClassesParam, String attributesParam) {
         this.delegate = delegate;
+        this.baseDN = baseDN != null ? baseDN : "";
         // Parse object classes from the parameter
         if (objectClassesParam != null && !objectClassesParam.isEmpty()) {
             this.objectClasses = objectClassesParam.split(",");
@@ -39,6 +41,13 @@ public class LdapConnection implements Connection {
         } else {
             this.attributes = new String[0];
         }
+    }
+
+    /**
+     * Get the LDAP base DN.
+     */
+    public String getBaseDN() {
+        return baseDN;
     }
 
     /**
@@ -111,7 +120,7 @@ public class LdapConnection implements Connection {
 
     @Override
     public Statement createStatement() throws SQLException {
-        return delegate.createStatement();
+        return new LdapStatement(delegate.createStatement(), baseDN, objectClasses);
     }
 
     @Override
@@ -178,7 +187,7 @@ public class LdapConnection implements Connection {
 
     @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency) throws SQLException {
-        return delegate.createStatement(resultSetType, resultSetConcurrency);
+        return new LdapStatement(delegate.createStatement(resultSetType, resultSetConcurrency), baseDN, objectClasses);
     }
 
     @Override
@@ -213,7 +222,7 @@ public class LdapConnection implements Connection {
 
     @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency, int resultSetHoldability) throws SQLException {
-        return delegate.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability);
+        return new LdapStatement(delegate.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability), baseDN, objectClasses);
     }
 
     @Override

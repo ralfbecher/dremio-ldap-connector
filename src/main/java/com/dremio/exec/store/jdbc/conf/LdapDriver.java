@@ -52,11 +52,14 @@ public class LdapDriver implements Driver {
             return null;
         }
 
+        // Extract baseDN from URL (comes after host:port/)
+        String baseDN = extractBaseDN(url);
         // Extract OBJECT_CLASSES and ATTRIBUTES parameters from URL
         String objectClasses = extractParameter(url, "OBJECT_CLASSES");
         String attributes = extractParameter(url, "ATTRIBUTES");
 
         LOG.log(Level.INFO, "LDAP Driver connecting with URL: " + url);
+        LOG.log(Level.INFO, "Extracted baseDN: " + baseDN);
         LOG.log(Level.INFO, "Extracted OBJECT_CLASSES: " + objectClasses);
         LOG.log(Level.INFO, "Extracted ATTRIBUTES: " + attributes);
 
@@ -66,8 +69,39 @@ public class LdapDriver implements Driver {
             return null;
         }
 
-        LOG.log(Level.INFO, "Created LdapConnection wrapper");
-        return new LdapConnection(rawConnection, objectClasses, attributes);
+        LOG.log(Level.INFO, "Created LdapConnection wrapper with baseDN: " + baseDN);
+        return new LdapConnection(rawConnection, baseDN, objectClasses, attributes);
+    }
+
+    /**
+     * Extract the base DN from the JDBC URL.
+     * URL format: jdbc:ldap://host:port/baseDN?params
+     */
+    private String extractBaseDN(String url) {
+        if (url == null) {
+            return null;
+        }
+        // Find the position after host:port/
+        int slashCount = 0;
+        int startIndex = -1;
+        for (int i = 0; i < url.length(); i++) {
+            if (url.charAt(i) == '/') {
+                slashCount++;
+                if (slashCount == 3) {
+                    startIndex = i + 1;
+                    break;
+                }
+            }
+        }
+        if (startIndex == -1 || startIndex >= url.length()) {
+            return null;
+        }
+        // Find the end (? or end of string)
+        int endIndex = url.indexOf('?', startIndex);
+        if (endIndex == -1) {
+            endIndex = url.length();
+        }
+        return url.substring(startIndex, endIndex);
     }
 
     /**
