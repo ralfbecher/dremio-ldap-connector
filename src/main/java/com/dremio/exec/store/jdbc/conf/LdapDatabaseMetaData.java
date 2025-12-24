@@ -75,9 +75,9 @@ public class LdapDatabaseMetaData implements DatabaseMetaData {
 
     @Override
     public ResultSet getColumns(String catalog, String schemaPattern, String tableNamePattern, String columnNamePattern) throws SQLException {
-        // Return configured attributes as columns for all tables
-        if (attributes.length > 0) {
-            return new AttributeResultSet(attributes, tableNamePattern, columnNamePattern);
+        // Return configured attributes as columns for all tables (object classes)
+        if (attributes.length > 0 && objectClasses.length > 0) {
+            return new AttributeResultSet(objectClasses, attributes, tableNamePattern, columnNamePattern);
         }
         // Fall back to delegate if no attributes configured
         ResultSet rs = delegate.getColumns(catalog, schemaPattern, tableNamePattern, columnNamePattern);

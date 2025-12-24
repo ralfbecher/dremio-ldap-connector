@@ -13,6 +13,7 @@ import java.util.Map;
 /**
  * A ResultSet that returns LDAP attributes as column metadata.
  * Used to expose configured attributes as columns in Dremio.
+ * Returns columns for each table (object class) + attribute combination.
  */
 public class AttributeResultSet implements ResultSet {
     // Standard column metadata columns
@@ -24,23 +25,33 @@ public class AttributeResultSet implements ResultSet {
         "SCOPE_SCHEMA", "SCOPE_TABLE", "SOURCE_DATA_TYPE", "IS_AUTOINCREMENT", "IS_GENERATEDCOLUMN"
     };
 
-    private final List<String> attributes;
+    // Each row is [tableName, attributeName, ordinalPosition]
+    private final List<String[]> rows;
     private int currentIndex = -1;
     private boolean closed = false;
 
-    public AttributeResultSet(String[] attributes, String tableNamePattern, String columnNamePattern) {
-        this.attributes = new ArrayList<>();
+    public AttributeResultSet(String[] objectClasses, String[] attributes, String tableNamePattern, String columnNamePattern) {
+        this.rows = new ArrayList<>();
+        String tablePattern = tableNamePattern != null ? tableNamePattern.replace("%", ".*") : ".*";
         String colPattern = columnNamePattern != null ? columnNamePattern.replace("%", ".*") : ".*";
-        for (String attr : attributes) {
-            if (attr != null && !attr.isEmpty() && attr.matches(colPattern)) {
-                this.attributes.add(attr);
+
+        // Generate rows for each table + attribute combination
+        for (String table : objectClasses) {
+            if (table == null || table.isEmpty() || !table.matches(tablePattern)) {
+                continue;
+            }
+            int ordinal = 1;
+            for (String attr : attributes) {
+                if (attr != null && !attr.isEmpty() && attr.matches(colPattern)) {
+                    rows.add(new String[]{table, attr, String.valueOf(ordinal++)});
+                }
             }
         }
     }
 
     @Override
     public boolean next() throws SQLException {
-        if (currentIndex < attributes.size() - 1) {
+        if (currentIndex < rows.size() - 1) {
             currentIndex++;
             return true;
         }
@@ -49,14 +60,15 @@ public class AttributeResultSet implements ResultSet {
 
     @Override
     public String getString(int columnIndex) throws SQLException {
-        if (currentIndex < 0 || currentIndex >= attributes.size()) {
+        if (currentIndex < 0 || currentIndex >= rows.size()) {
             throw new SQLException("No current row");
         }
+        String[] row = rows.get(currentIndex);
         switch (columnIndex) {
             case 1: return null;  // TABLE_CAT
             case 2: return null;  // TABLE_SCHEM
-            case 3: return null;  // TABLE_NAME (applies to all tables)
-            case 4: return attributes.get(currentIndex);  // COLUMN_NAME
+            case 3: return row[0];  // TABLE_NAME
+            case 4: return row[1];  // COLUMN_NAME
             case 5: return String.valueOf(Types.VARCHAR);  // DATA_TYPE
             case 6: return "VARCHAR";  // TYPE_NAME
             case 7: return "65535";  // COLUMN_SIZE
@@ -69,7 +81,7 @@ public class AttributeResultSet implements ResultSet {
             case 14: return null;  // SQL_DATA_TYPE
             case 15: return null;  // SQL_DATETIME_SUB
             case 16: return "65535";  // CHAR_OCTET_LENGTH
-            case 17: return String.valueOf(currentIndex + 1);  // ORDINAL_POSITION
+            case 17: return row[2];  // ORDINAL_POSITION
             case 18: return "YES";  // IS_NULLABLE
             case 19: return null;  // SCOPE_CATALOG
             case 20: return null;  // SCOPE_SCHEMA
@@ -178,13 +190,13 @@ public class AttributeResultSet implements ResultSet {
     @Override public BigDecimal getBigDecimal(String columnLabel) throws SQLException { return null; }
 
     @Override public boolean isBeforeFirst() throws SQLException { return currentIndex < 0; }
-    @Override public boolean isAfterLast() throws SQLException { return currentIndex >= attributes.size(); }
+    @Override public boolean isAfterLast() throws SQLException { return currentIndex >= rows.size(); }
     @Override public boolean isFirst() throws SQLException { return currentIndex == 0; }
-    @Override public boolean isLast() throws SQLException { return currentIndex == attributes.size() - 1; }
+    @Override public boolean isLast() throws SQLException { return currentIndex == rows.size() - 1; }
     @Override public void beforeFirst() throws SQLException { currentIndex = -1; }
-    @Override public void afterLast() throws SQLException { currentIndex = attributes.size(); }
-    @Override public boolean first() throws SQLException { if (attributes.isEmpty()) return false; currentIndex = 0; return true; }
-    @Override public boolean last() throws SQLException { if (attributes.isEmpty()) return false; currentIndex = attributes.size() - 1; return true; }
+    @Override public void afterLast() throws SQLException { currentIndex = rows.size(); }
+    @Override public boolean first() throws SQLException { if (rows.isEmpty()) return false; currentIndex = 0; return true; }
+    @Override public boolean last() throws SQLException { if (rows.isEmpty()) return false; currentIndex = rows.size() - 1; return true; }
     @Override public int getRow() throws SQLException { return currentIndex + 1; }
     @Override public boolean absolute(int row) throws SQLException { return false; }
     @Override public boolean relative(int rows) throws SQLException { return false; }

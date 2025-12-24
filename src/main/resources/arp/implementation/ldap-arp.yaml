@@ -7,7 +7,8 @@ metadata:
 
 syntax:
   # The OpenLDAP JDBC-LDAP driver uses standard SQL-like syntax
-  identifier_quote: '"'
+  # Note: No identifier quoting - the driver doesn't handle quoted identifiers well
+  identifier_quote: ''
   identifier_length_limit: 128
   allows_boolean_literal: false
   map_boolean_literal_to_bit: false
@@ -62,7 +63,8 @@ relational_algebra:
   except:
     enable: false
   project:
-    enable: true
+    # Disable projection pushdown - driver may only support SELECT *
+    enable: false
   join:
     # JOINs are not supported by the JDBC-LDAP driver
     # Dremio will handle joins locally
@@ -82,10 +84,10 @@ relational_algebra:
       enable: false
       inequality: false
   sort:
-    # Basic ORDER BY is supported
-    enable: true
+    # Disable ORDER BY pushdown - handle sorting in Dremio
+    enable: false
     order_by:
-      enable: true
+      enable: false
       default_nulls_ordering: high
     fetch_offset:
       offset_fetch:
