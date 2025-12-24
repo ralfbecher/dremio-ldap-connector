@@ -85,8 +85,9 @@ public class LdapStatement implements Statement {
         }
 
         // Replace FROM tableName with FROM baseDN
-        // Note: The JDBC-LDAP driver expects DNs without quotes
-        String fromReplacement = "FROM " + baseDN;
+        // Quote the baseDN to escape special characters (commas, equals)
+        String quotedBaseDN = "\"" + baseDN + "\"";
+        String fromReplacement = "FROM " + quotedBaseDN;
         transformedSql = FROM_PATTERN.matcher(transformedSql).replaceFirst(fromReplacement);
 
         // Add objectClass filter to WHERE clause
