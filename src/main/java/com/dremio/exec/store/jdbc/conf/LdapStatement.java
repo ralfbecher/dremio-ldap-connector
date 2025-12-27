@@ -27,11 +27,13 @@ public class LdapStatement implements Statement {
     private final Statement delegate;
     private final String baseDN;
     private final String[] objectClasses;
+    private final int maxRows;
 
-    public LdapStatement(Statement delegate, String baseDN, String[] objectClasses) {
+    public LdapStatement(Statement delegate, String baseDN, String[] objectClasses, int maxRows) {
         this.delegate = delegate;
         this.baseDN = baseDN;
         this.objectClasses = objectClasses != null ? objectClasses : new String[0];
+        this.maxRows = maxRows;
     }
 
     /**
@@ -90,9 +92,18 @@ public class LdapStatement implements Statement {
         String fromReplacement = "FROM " + quotedBaseDN;
         transformedSql = FROM_PATTERN.matcher(transformedSql).replaceFirst(fromReplacement);
 
-        // Try without WHERE clause first to test if baseDN query works
-        // The objectClass is already determined by the table name (e.g., "person")
-        // JDBC-LDAP might handle objectClass filtering differently
+        // Add objectClass filter
+        String objectClassFilter = "objectClass = '" + matchedObjectClass + "'";
+        if (transformedSql.toUpperCase().contains(" WHERE ")) {
+            transformedSql = transformedSql.replaceFirst("(?i)\\bWHERE\\b", "WHERE " + objectClassFilter + " AND ");
+        } else {
+            transformedSql = transformedSql + " WHERE " + objectClassFilter;
+        }
+
+        // Add LIMIT to avoid LDAP server size limit errors (default is often 1000)
+        if (!transformedSql.toUpperCase().contains(" LIMIT ") && maxRows > 0) {
+            transformedSql = transformedSql + " LIMIT " + maxRows;
+        }
 
         LOG.log(Level.WARNING, "Transformed SQL: " + transformedSql);
         return transformedSql;

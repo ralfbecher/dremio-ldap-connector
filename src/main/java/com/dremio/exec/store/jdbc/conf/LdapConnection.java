@@ -19,10 +19,12 @@ public class LdapConnection implements Connection {
     private final String baseDN;
     private final String[] objectClasses;
     private final String[] attributes;
+    private final int maxRows;
 
-    public LdapConnection(Connection delegate, String baseDN, String objectClassesParam, String attributesParam) {
+    public LdapConnection(Connection delegate, String baseDN, String objectClassesParam, String attributesParam, int maxRows) {
         this.delegate = delegate;
         this.baseDN = baseDN != null ? baseDN : "";
+        this.maxRows = maxRows;
         // Parse object classes from the parameter
         if (objectClassesParam != null && !objectClassesParam.isEmpty()) {
             this.objectClasses = objectClassesParam.split(",");
@@ -120,7 +122,7 @@ public class LdapConnection implements Connection {
 
     @Override
     public Statement createStatement() throws SQLException {
-        return new LdapStatement(delegate.createStatement(), baseDN, objectClasses);
+        return new LdapStatement(delegate.createStatement(), baseDN, objectClasses, maxRows);
     }
 
     @Override
@@ -187,7 +189,7 @@ public class LdapConnection implements Connection {
 
     @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency) throws SQLException {
-        return new LdapStatement(delegate.createStatement(resultSetType, resultSetConcurrency), baseDN, objectClasses);
+        return new LdapStatement(delegate.createStatement(resultSetType, resultSetConcurrency), baseDN, objectClasses, maxRows);
     }
 
     @Override
@@ -222,7 +224,7 @@ public class LdapConnection implements Connection {
 
     @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency, int resultSetHoldability) throws SQLException {
-        return new LdapStatement(delegate.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability), baseDN, objectClasses);
+        return new LdapStatement(delegate.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability), baseDN, objectClasses, maxRows);
     }
 
     @Override

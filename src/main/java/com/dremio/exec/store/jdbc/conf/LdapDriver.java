@@ -54,14 +54,24 @@ public class LdapDriver implements Driver {
 
         // Extract baseDN from URL (comes after host:port/)
         String baseDN = extractBaseDN(url);
-        // Extract OBJECT_CLASSES and ATTRIBUTES parameters from URL
+        // Extract OBJECT_CLASSES, ATTRIBUTES and MAX_ROWS parameters from URL
         String objectClasses = extractParameter(url, "OBJECT_CLASSES");
         String attributes = extractParameter(url, "ATTRIBUTES");
+        String maxRowsStr = extractParameter(url, "MAX_ROWS");
+        int maxRows = 500; // default
+        if (maxRowsStr != null) {
+            try {
+                maxRows = Integer.parseInt(maxRowsStr);
+            } catch (NumberFormatException e) {
+                LOG.log(Level.WARNING, "Invalid MAX_ROWS value: " + maxRowsStr + ", using default 500");
+            }
+        }
 
         LOG.log(Level.INFO, "LDAP Driver connecting with URL: " + url);
         LOG.log(Level.INFO, "Extracted baseDN: " + baseDN);
         LOG.log(Level.INFO, "Extracted OBJECT_CLASSES: " + objectClasses);
         LOG.log(Level.INFO, "Extracted ATTRIBUTES: " + attributes);
+        LOG.log(Level.INFO, "Extracted MAX_ROWS: " + maxRows);
 
         Connection rawConnection = delegate.connect(url, info);
         if (rawConnection == null) {
@@ -70,7 +80,7 @@ public class LdapDriver implements Driver {
         }
 
         LOG.log(Level.INFO, "Created LdapConnection wrapper with baseDN: " + baseDN);
-        return new LdapConnection(rawConnection, baseDN, objectClasses, attributes);
+        return new LdapConnection(rawConnection, baseDN, objectClasses, attributes, maxRows);
     }
 
     /**
