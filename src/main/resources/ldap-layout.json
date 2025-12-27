@@ -66,6 +66,10 @@
                 "propName": "attributes",
                 "placeholder": "dn,cn,objectClass,sn,givenName,mail,uid",
                 "help": {"position": "bottom", "text": "LDAP attributes to expose as columns (comma-separated)"}
+              },
+              {
+                "propName": "maxRows",
+                "help": {"position": "bottom", "text": "Maximum rows per query to avoid LDAP server size limits (default: 500)"}
               }
             ]
           },

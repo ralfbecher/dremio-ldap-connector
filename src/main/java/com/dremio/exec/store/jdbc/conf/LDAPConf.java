@@ -91,6 +91,11 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
   @NotMetadataImpacting
   public String attributes = "dn,cn,objectClass,sn,givenName,mail,uid,memberOf,member,description";
 
+  @Tag(13)
+  @DisplayMetadata(label = "Max rows per query (LDAP size limit)")
+  @NotMetadataImpacting
+  public int maxRows = 500;
+
   @VisibleForTesting
   public String toJdbcConnectionString() {
     StringBuilder sb = new StringBuilder();
@@ -123,6 +128,9 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
     if (attributes != null && !attributes.isEmpty()) {
       sb.append("&ATTRIBUTES:=").append(attributes);
     }
+
+    // Pass max rows for LDAP size limit
+    sb.append("&MAX_ROWS:=").append(maxRows);
 
     return sb.toString();
   }
