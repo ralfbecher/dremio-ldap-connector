@@ -92,18 +92,8 @@ public class LdapStatement implements Statement {
         String fromReplacement = "FROM " + quotedBaseDN;
         transformedSql = FROM_PATTERN.matcher(transformedSql).replaceFirst(fromReplacement);
 
-        // Add objectClass filter
-        String objectClassFilter = "objectClass = '" + matchedObjectClass + "'";
-        if (transformedSql.toUpperCase().contains(" WHERE ")) {
-            transformedSql = transformedSql.replaceFirst("(?i)\\bWHERE\\b", "WHERE " + objectClassFilter + " AND ");
-        } else {
-            transformedSql = transformedSql + " WHERE " + objectClassFilter;
-        }
-
-        // Add LIMIT to avoid LDAP server size limit errors (default is often 1000)
-        if (!transformedSql.toUpperCase().contains(" LIMIT ") && maxRows > 0) {
-            transformedSql = transformedSql + " LIMIT " + maxRows;
-        }
+        // Don't add objectClass filter - let the LDAP driver handle the search
+        // The baseDN should be sufficient for searching
 
         LOG.log(Level.WARNING, "Transformed SQL: " + transformedSql);
         return transformedSql;
@@ -111,6 +101,15 @@ public class LdapStatement implements Statement {
 
     @Override
     public ResultSet executeQuery(String sql) throws SQLException {
+        // Set max rows to avoid LDAP size limit errors
+        if (maxRows > 0) {
+            try {
+                delegate.setMaxRows(maxRows);
+                LOG.log(Level.WARNING, "Set maxRows to: " + maxRows);
+            } catch (SQLException e) {
+                LOG.log(Level.WARNING, "Could not set maxRows: " + e.getMessage());
+            }
+        }
         return delegate.executeQuery(transformQuery(sql));
     }
 
