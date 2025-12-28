@@ -87,13 +87,36 @@ public class LdapStatement implements Statement {
         }
 
         // Replace FROM tableName with FROM baseDN
-        // Quote the baseDN to escape special characters (commas, equals)
-        String quotedBaseDN = "\"" + baseDN + "\"";
+        // Use single quotes - the JDBC-LDAP driver treats FROM as a string value (search base)
+        // not as a SQL identifier (which would use double quotes)
+        String quotedBaseDN = "'" + baseDN + "'";
         String fromReplacement = "FROM " + quotedBaseDN;
         transformedSql = FROM_PATTERN.matcher(transformedSql).replaceFirst(fromReplacement);
 
-        // Don't add objectClass filter - let the LDAP driver handle the search
-        // The baseDN should be sufficient for searching
+        // Add objectClass filter to the WHERE clause
+        // This is critical for Active Directory to avoid referral errors ("Operations Error")
+        // The JDBC-LDAP driver translates WHERE clauses to LDAP filters
+        String objectClassFilter = "objectClass='" + matchedObjectClass + "'";
+
+        // Check if there's already a WHERE clause
+        Pattern wherePattern = Pattern.compile("\\bWHERE\\b", Pattern.CASE_INSENSITIVE);
+        if (wherePattern.matcher(transformedSql).find()) {
+            // Append to existing WHERE clause with AND
+            transformedSql = wherePattern.matcher(transformedSql).replaceFirst("WHERE " + objectClassFilter + " AND ");
+        } else {
+            // Check if there's an ORDER BY clause
+            Pattern orderByPattern = Pattern.compile("\\bORDER\\s+BY\\b", Pattern.CASE_INSENSITIVE);
+            Matcher orderByMatcher = orderByPattern.matcher(transformedSql);
+            if (orderByMatcher.find()) {
+                // Insert WHERE before ORDER BY
+                transformedSql = transformedSql.substring(0, orderByMatcher.start()) +
+                                 "WHERE " + objectClassFilter + " " +
+                                 transformedSql.substring(orderByMatcher.start());
+            } else {
+                // Append WHERE at the end
+                transformedSql = transformedSql + " WHERE " + objectClassFilter;
+            }
+        }
 
         LOG.log(Level.WARNING, "Transformed SQL: " + transformedSql);
         return transformedSql;
