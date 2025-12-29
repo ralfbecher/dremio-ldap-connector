@@ -84,18 +84,33 @@ public class JndiLdapStatement implements Statement {
                 requestedAttrs = configuredAttributes.length > 0 ? configuredAttributes : new String[]{"dn", "cn", "objectClass"};
                 LOG.log(Level.WARNING, "SELECT * - using configured attributes");
             } else {
-                requestedAttrs = selectPart.split(",");
-                for (int i = 0; i < requestedAttrs.length; i++) {
-                    String attr = requestedAttrs[i].trim();
+                // Split on commas, but not inside parentheses
+                List<String> columns = splitSelectColumns(selectPart);
+                requestedAttrs = new String[columns.size()];
+                for (int i = 0; i < columns.size(); i++) {
+                    String attr = columns.get(i).trim();
+                    String originalAttr = attr;
+
                     // Remove quotes
                     attr = attr.replace("\"", "");
-                    // Remove table prefix if present (e.g., person.givenName -> givenName)
-                    int dotIdx = attr.lastIndexOf('.');
-                    if (dotIdx >= 0) {
-                        attr = attr.substring(dotIdx + 1);
+
+                    // Handle CAST(...) AS alias or expression AS alias
+                    // Extract the alias after AS (case-insensitive, must be standalone word)
+                    Pattern asPattern = Pattern.compile(".*\\s+AS\\s+(\\w+)\\s*$", Pattern.CASE_INSENSITIVE);
+                    Matcher asMatcher = asPattern.matcher(attr);
+                    if (asMatcher.matches()) {
+                        attr = asMatcher.group(1);
+                        LOG.log(Level.WARNING, "Extracted alias '" + attr + "' from expression: " + originalAttr);
+                    } else {
+                        // Remove table prefix if present (e.g., person.givenName -> givenName)
+                        int dotIdx = attr.lastIndexOf('.');
+                        if (dotIdx >= 0) {
+                            attr = attr.substring(dotIdx + 1);
+                        }
                     }
+
                     requestedAttrs[i] = attr;
-                    LOG.log(Level.WARNING, "Parsed column " + i + ": '" + requestedAttrs[i] + "' from '" + selectPart.split(",")[i].trim() + "'");
+                    LOG.log(Level.WARNING, "Parsed column " + i + ": '" + requestedAttrs[i] + "' from '" + originalAttr + "'");
                 }
             }
             LOG.log(Level.WARNING, "Final requested attributes: " + String.join(", ", requestedAttrs));
@@ -232,6 +247,35 @@ public class JndiLdapStatement implements Statement {
 
         LOG.log(Level.WARNING, "extractTableFromSubquery: could not extract table from '" + subquery + "'");
         return null;
+    }
+
+    /**
+     * Split SELECT columns on commas, but not inside parentheses.
+     * This handles expressions like CAST('value' AS VARCHAR) correctly.
+     */
+    private List<String> splitSelectColumns(String selectPart) {
+        List<String> columns = new ArrayList<>();
+        int depth = 0;
+        int start = 0;
+
+        for (int i = 0; i < selectPart.length(); i++) {
+            char c = selectPart.charAt(i);
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                columns.add(selectPart.substring(start, i).trim());
+                start = i + 1;
+            }
+        }
+
+        // Add the last column
+        if (start < selectPart.length()) {
+            columns.add(selectPart.substring(start).trim());
+        }
+
+        return columns;
     }
 
     /**
