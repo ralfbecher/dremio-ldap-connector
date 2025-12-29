@@ -453,12 +453,12 @@ public class JndiLdapStatement implements Statement {
 
             NamingEnumeration<SearchResult> searchResults = ctx.search("", filter, searchControls);
 
-            // Check if dn was explicitly requested
+            // Check if dn was explicitly requested (not distinguishedName - AD returns that separately)
             Set<String> requestedSet = new HashSet<>();
             for (String attr : attributes) {
                 requestedSet.add(attr.toLowerCase());
             }
-            boolean dnRequested = requestedSet.contains("dn") || requestedSet.contains("distinguishedname");
+            boolean dnRequested = requestedSet.contains("dn");
 
             while (searchResults.hasMore()) {
                 try {
