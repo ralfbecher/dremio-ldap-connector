@@ -104,8 +104,23 @@ public class JndiLdapStatement implements Statement {
             String searchBase = baseDN;
             String objectClassFilter = null;
 
-            // Check if fromPart is one of our configured objectClasses
+            // Clean up FROM part - remove quotes
             String fromPartClean = fromPart.replace("\"", "").trim();
+
+            // Handle subqueries: FROM (SELECT ... FROM table) AS alias
+            if (fromPartClean.startsWith("(SELECT") || fromPartClean.startsWith("(select")) {
+                // Extract the actual table name from the subquery
+                String innerTable = extractTableFromSubquery(fromPartClean);
+                if (innerTable != null) {
+                    LOG.log(Level.WARNING, "Extracted table from subquery: " + innerTable);
+                    fromPartClean = innerTable;
+                } else {
+                    LOG.log(Level.WARNING, "Could not extract table from subquery, using baseDN");
+                    fromPartClean = "";
+                }
+            }
+
+            // Check if fromPart is one of our configured objectClasses
             for (String oc : objectClasses) {
                 if (oc.equalsIgnoreCase(fromPartClean)) {
                     objectClassFilter = oc;
@@ -114,7 +129,7 @@ public class JndiLdapStatement implements Statement {
                 }
             }
 
-            if (objectClassFilter == null) {
+            if (objectClassFilter == null && !fromPartClean.isEmpty()) {
                 // FROM is probably a DN itself
                 searchBase = fromPartClean;
                 LOG.log(Level.WARNING, "FROM is DN: " + searchBase);
@@ -171,6 +186,52 @@ public class JndiLdapStatement implements Statement {
             e.printStackTrace();
             throw new SQLException("LDAP query error: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Extract table name from a subquery.
+     * Input: (SELECT group.cn, group.distinguishedName FROM group) AS group
+     * Output: group
+     */
+    private String extractTableFromSubquery(String subquery) {
+        if (subquery == null || subquery.isEmpty()) {
+            return null;
+        }
+
+        // Pattern to match: (SELECT ... FROM tableName) AS alias
+        // or: (SELECT ... FROM tableName)
+        Pattern subqueryPattern = Pattern.compile(
+            "\\(\\s*SELECT\\s+.+?\\s+FROM\\s+(\\w+)\\s*\\)(?:\\s+AS\\s+\\w+)?",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+        );
+
+        Matcher matcher = subqueryPattern.matcher(subquery.trim());
+        if (matcher.matches()) {
+            String tableName = matcher.group(1);
+            LOG.log(Level.WARNING, "extractTableFromSubquery: extracted '" + tableName + "' from '" + subquery + "'");
+            return tableName;
+        }
+
+        // Try a simpler approach - find FROM keyword and extract next word
+        String upperSubquery = subquery.toUpperCase();
+        int fromIdx = upperSubquery.lastIndexOf(" FROM ");
+        if (fromIdx > 0) {
+            String afterFrom = subquery.substring(fromIdx + 6).trim();
+            // Remove closing paren and anything after
+            int parenIdx = afterFrom.indexOf(')');
+            if (parenIdx > 0) {
+                afterFrom = afterFrom.substring(0, parenIdx).trim();
+            }
+            // Get first word (table name)
+            String[] parts = afterFrom.split("\\s+");
+            if (parts.length > 0 && !parts[0].isEmpty()) {
+                LOG.log(Level.WARNING, "extractTableFromSubquery (fallback): extracted '" + parts[0] + "' from '" + subquery + "'");
+                return parts[0];
+            }
+        }
+
+        LOG.log(Level.WARNING, "extractTableFromSubquery: could not extract table from '" + subquery + "'");
+        return null;
     }
 
     /**
