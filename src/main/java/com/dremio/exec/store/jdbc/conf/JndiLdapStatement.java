@@ -414,6 +414,17 @@ public class JndiLdapStatement implements Statement {
     }
 
     /**
+     * Strip table prefix from attribute name (e.g., "user.name" -> "name")
+     */
+    private String stripTablePrefix(String attr) {
+        int dotIdx = attr.lastIndexOf('.');
+        if (dotIdx >= 0) {
+            return attr.substring(dotIdx + 1);
+        }
+        return attr;
+    }
+
+    /**
      * Parse a single condition (attr op value).
      */
     private String parseCondition(String condition) {
@@ -428,13 +439,14 @@ public class JndiLdapStatement implements Statement {
         // SQL: cn LIKE 'John%' -> LDAP: (cn=John*)
         // SQL: cn LIKE '%John' -> LDAP: (cn=*John)
         // SQL: cn LIKE '%John%' -> LDAP: (cn=*John*)
+        // Pattern allows table prefix: user.cn LIKE 'John%'
         Pattern likePattern = Pattern.compile(
-            "(\\w+)\\s+LIKE\\s+'([^']*)'",
+            "([\\w.]+)\\s+LIKE\\s+'([^']*)'",
             Pattern.CASE_INSENSITIVE
         );
         Matcher likeMatcher = likePattern.matcher(condition);
         if (likeMatcher.matches()) {
-            String attr = likeMatcher.group(1);
+            String attr = stripTablePrefix(likeMatcher.group(1));
             String value = likeMatcher.group(2);
             // Convert SQL % to LDAP *
             value = value.replace("%", "*");
@@ -445,64 +457,67 @@ public class JndiLdapStatement implements Statement {
 
         // Handle NOT LIKE
         Pattern notLikePattern = Pattern.compile(
-            "(\\w+)\\s+NOT\\s+LIKE\\s+'([^']*)'",
+            "([\\w.]+)\\s+NOT\\s+LIKE\\s+'([^']*)'",
             Pattern.CASE_INSENSITIVE
         );
         Matcher notLikeMatcher = notLikePattern.matcher(condition);
         if (notLikeMatcher.matches()) {
-            String attr = notLikeMatcher.group(1);
+            String attr = stripTablePrefix(notLikeMatcher.group(1));
             String value = notLikeMatcher.group(2).replace("%", "*");
             return "(!(" + attr + "=" + value + "))";
         }
 
         // Handle IS NULL -> LDAP: (!(attr=*))
         Pattern isNullPattern = Pattern.compile(
-            "(\\w+)\\s+IS\\s+NULL",
+            "([\\w.]+)\\s+IS\\s+NULL",
             Pattern.CASE_INSENSITIVE
         );
         Matcher isNullMatcher = isNullPattern.matcher(condition);
         if (isNullMatcher.matches()) {
-            String attr = isNullMatcher.group(1);
+            String attr = stripTablePrefix(isNullMatcher.group(1));
             return "(!(" + attr + "=*))";
         }
 
         // Handle IS NOT NULL -> LDAP: (attr=*)
         Pattern isNotNullPattern = Pattern.compile(
-            "(\\w+)\\s+IS\\s+NOT\\s+NULL",
+            "([\\w.]+)\\s+IS\\s+NOT\\s+NULL",
             Pattern.CASE_INSENSITIVE
         );
         Matcher isNotNullMatcher = isNotNullPattern.matcher(condition);
         if (isNotNullMatcher.matches()) {
-            String attr = isNotNullMatcher.group(1);
+            String attr = stripTablePrefix(isNotNullMatcher.group(1));
             return "(" + attr + "=*)";
         }
 
         // Handle >= (greater than or equal)
-        Pattern gePattern = Pattern.compile("(\\w+)\\s*>=\\s*'?([^']*)'?");
+        Pattern gePattern = Pattern.compile("([\\w.]+)\\s*>=\\s*'?([^']*)'?");
         Matcher geMatcher = gePattern.matcher(condition);
         if (geMatcher.matches()) {
-            return "(" + geMatcher.group(1) + ">=" + geMatcher.group(2).trim() + ")";
+            String attr = stripTablePrefix(geMatcher.group(1));
+            return "(" + attr + ">=" + geMatcher.group(2).trim() + ")";
         }
 
         // Handle <= (less than or equal)
-        Pattern lePattern = Pattern.compile("(\\w+)\\s*<=\\s*'?([^']*)'?");
+        Pattern lePattern = Pattern.compile("([\\w.]+)\\s*<=\\s*'?([^']*)'?");
         Matcher leMatcher = lePattern.matcher(condition);
         if (leMatcher.matches()) {
-            return "(" + leMatcher.group(1) + "<=" + leMatcher.group(2).trim() + ")";
+            String attr = stripTablePrefix(leMatcher.group(1));
+            return "(" + attr + "<=" + leMatcher.group(2).trim() + ")";
         }
 
         // Handle <> or != (not equal) -> LDAP: (!(attr=value))
-        Pattern nePattern = Pattern.compile("(\\w+)\\s*(<>|!=)\\s*'?([^']*)'?");
+        Pattern nePattern = Pattern.compile("([\\w.]+)\\s*(<>|!=)\\s*'?([^']*)'?");
         Matcher neMatcher = nePattern.matcher(condition);
         if (neMatcher.matches()) {
-            return "(!(" + neMatcher.group(1) + "=" + neMatcher.group(3).trim() + "))";
+            String attr = stripTablePrefix(neMatcher.group(1));
+            return "(!(" + attr + "=" + neMatcher.group(3).trim() + "))";
         }
 
         // Handle simple equality: attr='value' or attr=value
-        Pattern eqPattern = Pattern.compile("(\\w+)\\s*=\\s*'?([^']*)'?");
+        Pattern eqPattern = Pattern.compile("([\\w.]+)\\s*=\\s*'?([^']*)'?");
         Matcher eqMatcher = eqPattern.matcher(condition);
         if (eqMatcher.matches()) {
-            String attr = eqMatcher.group(1);
+            String attr = stripTablePrefix(eqMatcher.group(1));
             String value = eqMatcher.group(2).trim();
             // Remove trailing quote if present
             if (value.endsWith("'")) {
