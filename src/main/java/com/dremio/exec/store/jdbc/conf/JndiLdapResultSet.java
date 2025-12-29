@@ -24,7 +24,8 @@ public class JndiLdapResultSet implements ResultSet {
     private boolean wasNull = false;
 
     public JndiLdapResultSet(List<Map<String, Object>> data, String[] requestedColumns) {
-        this.data = data;
+        // Normalize data: handle AD ranged attributes like "member;range=0-1499"
+        this.data = normalizeRangedAttributes(data);
 
         // Build column list - preserve original case of requested columns
         // Use LinkedHashMap to track lowercase -> original case mapping
@@ -36,7 +37,8 @@ public class JndiLdapResultSet implements ResultSet {
         }
 
         // Add any additional columns found in data (if not already present)
-        for (Map<String, Object> row : data) {
+        // Skip ranged attribute variants
+        for (Map<String, Object> row : this.data) {
             for (String key : row.keySet()) {
                 String lowerKey = key.toLowerCase();
                 if (!columnMap.containsKey(lowerKey)) {
@@ -50,6 +52,46 @@ public class JndiLdapResultSet implements ResultSet {
         this.metaData = new JndiLdapResultSetMetaData(columnNames);
 
         LOG.log(Level.WARNING, "JndiLdapResultSet created with " + data.size() + " rows, " + columnNames.length + " columns: " + String.join(", ", columnNames));
+    }
+
+    /**
+     * Normalize AD ranged attributes.
+     * AD returns attributes like "member;range=0-1499" when there are many values.
+     * This method merges them into the base attribute name (e.g., "member").
+     */
+    private List<Map<String, Object>> normalizeRangedAttributes(List<Map<String, Object>> data) {
+        List<Map<String, Object>> normalized = new ArrayList<>();
+
+        for (Map<String, Object> row : data) {
+            Map<String, Object> newRow = new LinkedHashMap<>();
+
+            for (Map.Entry<String, Object> entry : row.entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+
+                // Check for ranged attribute pattern: "attribute;range=X-Y"
+                int rangeIdx = key.indexOf(";range=");
+                if (rangeIdx > 0) {
+                    // Extract base attribute name
+                    String baseAttr = key.substring(0, rangeIdx);
+                    LOG.log(Level.WARNING, "Normalizing ranged attribute: " + key + " -> " + baseAttr);
+
+                    // Merge with existing value if present
+                    if (newRow.containsKey(baseAttr)) {
+                        Object existing = newRow.get(baseAttr);
+                        newRow.put(baseAttr, existing + ", " + value);
+                    } else {
+                        newRow.put(baseAttr, value);
+                    }
+                } else {
+                    newRow.put(key, value);
+                }
+            }
+
+            normalized.add(newRow);
+        }
+
+        return normalized;
     }
 
     @Override

@@ -453,14 +453,23 @@ public class JndiLdapStatement implements Statement {
 
             NamingEnumeration<SearchResult> searchResults = ctx.search("", filter, searchControls);
 
+            // Check if dn was explicitly requested
+            Set<String> requestedSet = new HashSet<>();
+            for (String attr : attributes) {
+                requestedSet.add(attr.toLowerCase());
+            }
+            boolean dnRequested = requestedSet.contains("dn") || requestedSet.contains("distinguishedname");
+
             while (searchResults.hasMore()) {
                 try {
                     SearchResult sr = searchResults.next();
                     Map<String, Object> row = new LinkedHashMap<>();
 
-                    // Add DN as first column
-                    String dn = sr.getNameInNamespace();
-                    row.put("dn", dn);
+                    // Only add DN if it was requested
+                    if (dnRequested) {
+                        String dn = sr.getNameInNamespace();
+                        row.put("dn", dn);
+                    }
 
                     // Add other attributes
                     Attributes attrs = sr.getAttributes();
