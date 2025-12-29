@@ -2,6 +2,9 @@ package com.dremio.exec.store.jdbc.conf;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+
 import org.hibernate.validator.constraints.NotBlank;
 
 import com.dremio.exec.store.jdbc.*;
@@ -28,10 +31,9 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
   private static final String ARP_FILENAME = "arp/implementation/ldap-arp.yaml";
   private static final ArpDialect ARP_DIALECT =
       AbstractArpConf.loadArpFile(ARP_FILENAME, (ArpDialect::new));
-  // Use our LdapDriver wrapper instead of the raw LDAP driver.
-  // LdapDriver wraps connections with LdapConnection, which silently ignores
-  // transaction-related calls that DBCP2 makes during pool initialization.
-  private static final String DRIVER = "com.dremio.exec.store.jdbc.conf.LdapDriver";
+  // Use our pure JNDI-based LDAP driver.
+  // No external jdbcLdap.jar is needed - uses Java's built-in JNDI LDAP support.
+  private static final String DRIVER = "com.dremio.exec.store.jdbc.conf.JndiLdapDriver";
 
   @NotBlank
   @Tag(1)
@@ -84,17 +86,43 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
   @Tag(11)
   @DisplayMetadata(label = "Object Classes (comma-separated)")
   @NotMetadataImpacting
-  public String objectClasses = "person,organizationalUnit,groupOfNames,inetOrgPerson";
+  public String objectClasses = "user,group,computer,organizationalUnit,contact";
 
   @Tag(12)
   @DisplayMetadata(label = "Attributes (comma-separated)")
   @NotMetadataImpacting
-  public String attributes = "dn,cn,objectClass,sn,givenName,mail,uid,memberOf,member,description";
+  public String attributes = "dn,cn,objectClass,sAMAccountName,displayName,mail,givenName,sn,memberOf,member,description,userPrincipalName,distinguishedName";
 
   @Tag(13)
   @DisplayMetadata(label = "Max rows per query (LDAP size limit)")
   @NotMetadataImpacting
   public int maxRows = 500;
+
+  @Tag(14)
+  @DisplayMetadata(label = "Use objectCategory filter (for Active Directory)")
+  @NotMetadataImpacting
+  public boolean useObjectCategory = false;
+
+  @Tag(15)
+  @DisplayMetadata(label = "Skip objectClass/objectCategory filter (debug mode)")
+  @NotMetadataImpacting
+  public boolean skipFilter = false;
+
+  /**
+   * URL-encode a string for safe inclusion in JDBC URL parameters.
+   * This is critical for passwords containing special characters like &, =, £, etc.
+   */
+  private String urlEncode(String value) {
+    if (value == null) {
+      return "";
+    }
+    try {
+      return URLEncoder.encode(value, "UTF-8");
+    } catch (UnsupportedEncodingException e) {
+      // UTF-8 is always supported, this should never happen
+      return value;
+    }
+  }
 
   @VisibleForTesting
   public String toJdbcConnectionString() {
@@ -112,11 +140,11 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
     }
 
     if (bindDN != null && !bindDN.isEmpty()) {
-      sb.append("&SECURITY_PRINCIPAL:=").append(bindDN);
+      sb.append("&SECURITY_PRINCIPAL:=").append(urlEncode(bindDN));
     }
 
     if (password != null && !password.isEmpty()) {
-      sb.append("&SECURITY_CREDENTIALS:=").append(password);
+      sb.append("&SECURITY_CREDENTIALS:=").append(urlEncode(password));
     }
 
     // Pass object classes as a custom parameter for schema discovery
@@ -131,6 +159,12 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
 
     // Pass max rows for LDAP size limit
     sb.append("&MAX_ROWS:=").append(maxRows);
+
+    // Pass objectCategory flag for Active Directory
+    sb.append("&USE_OBJECT_CATEGORY:=").append(useObjectCategory);
+
+    // Pass skipFilter flag for debugging
+    sb.append("&SKIP_FILTER:=").append(skipFilter);
 
     return sb.toString();
   }

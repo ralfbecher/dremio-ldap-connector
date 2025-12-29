@@ -1,9 +1,19 @@
 package com.dremio.exec.store.jdbc.conf;
 
 import java.sql.*;
+import java.util.Hashtable;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.naming.Context;
+import javax.naming.NamingEnumeration;
+import javax.naming.directory.Attributes;
+import javax.naming.directory.DirContext;
+import javax.naming.directory.InitialDirContext;
+import javax.naming.directory.SearchControls;
+import javax.naming.directory.SearchResult;
 
 /**
  * A Connection wrapper that silently ignores transaction-related operations.
@@ -15,16 +25,61 @@ import java.util.concurrent.Executor;
  * throw "LDAP Does Not Support Transactions" exceptions.
  */
 public class LdapConnection implements Connection {
+    private static final Logger LOG = Logger.getLogger(LdapConnection.class.getName());
+
     private final Connection delegate;
     private final String baseDN;
     private final String[] objectClasses;
     private final String[] attributes;
     private final int maxRows;
+    private final boolean useObjectCategory;
+    private final boolean skipFilter;
+    private final String originalUrl;  // Store original URL with all parameters
+    private final String ldapUrl;      // LDAP URL (host:port)
+    private final String principal;    // Bind DN
+    private final String credentials;  // Password
 
-    public LdapConnection(Connection delegate, String baseDN, String objectClassesParam, String attributesParam, int maxRows) {
+    public LdapConnection(Connection delegate, String baseDN, String objectClassesParam, String attributesParam, int maxRows, boolean useObjectCategory, boolean skipFilter, String originalUrl) {
         this.delegate = delegate;
         this.baseDN = baseDN != null ? baseDN : "";
         this.maxRows = maxRows;
+        this.useObjectCategory = useObjectCategory;
+        this.skipFilter = skipFilter;
+        this.originalUrl = originalUrl;
+
+        // Extract LDAP connection details from URL for JNDI-based statement
+        String extractedLdapUrl = null;
+        String extractedPrincipal = null;
+        String extractedCredentials = null;
+
+        if (originalUrl != null && originalUrl.startsWith("jdbc:ldap://")) {
+            String temp = originalUrl.replace("jdbc:ldap://", "ldap://");
+            int queryStart = temp.indexOf('?');
+            if (queryStart > 0) {
+                // Extract host:port
+                String hostPart = temp.substring(0, queryStart);
+                int slashPos = hostPart.indexOf('/', 7);
+                if (slashPos > 0) {
+                    extractedLdapUrl = hostPart.substring(0, slashPos);
+                } else {
+                    extractedLdapUrl = hostPart;
+                }
+
+                // Extract credentials from query params
+                String params = temp.substring(queryStart + 1);
+                for (String param : params.split("&")) {
+                    if (param.startsWith("SECURITY_PRINCIPAL:=")) {
+                        extractedPrincipal = param.substring(20);
+                    } else if (param.startsWith("SECURITY_CREDENTIALS:=")) {
+                        extractedCredentials = param.substring(22);
+                    }
+                }
+            }
+        }
+
+        this.ldapUrl = extractedLdapUrl;
+        this.principal = extractedPrincipal;
+        this.credentials = extractedCredentials;
         // Parse object classes from the parameter
         if (objectClassesParam != null && !objectClassesParam.isEmpty()) {
             this.objectClasses = objectClassesParam.split(",");
@@ -42,6 +97,248 @@ public class LdapConnection implements Connection {
             }
         } else {
             this.attributes = new String[0];
+        }
+        // Test query to verify LDAP connection works
+        testLdapQuery();
+    }
+
+    /**
+     * Execute a test query to verify the LDAP driver can retrieve data.
+     */
+    private void testLdapQuery() {
+        try {
+            LOG.log(Level.WARNING, "=== Testing LDAP Connection ===");
+            LOG.log(Level.WARNING, "BaseDN: " + baseDN);
+            LOG.log(Level.WARNING, "ObjectClasses: " + (objectClasses != null ? String.join(",", objectClasses) : "none"));
+            LOG.log(Level.WARNING, "Attributes: " + (attributes != null ? String.join(",", attributes) : "none"));
+
+            // First, try to get metadata to see if connection works
+            try {
+                DatabaseMetaData dbMeta = delegate.getMetaData();
+                LOG.log(Level.WARNING, "Driver name: " + dbMeta.getDriverName());
+                LOG.log(Level.WARNING, "Driver version: " + dbMeta.getDriverVersion());
+                LOG.log(Level.WARNING, "Database product: " + dbMeta.getDatabaseProductName());
+                LOG.log(Level.WARNING, "Database version: " + dbMeta.getDatabaseProductVersion());
+                LOG.log(Level.WARNING, "User name: " + dbMeta.getUserName());
+                LOG.log(Level.WARNING, "URL: " + dbMeta.getURL());
+            } catch (Exception e) {
+                LOG.log(Level.WARNING, "Could not get database metadata: " + e.getMessage());
+            }
+
+            // Try multiple query variations to diagnose the issue
+            // The JDBC-LDAP driver may require specific syntax:
+            // - Explicit attribute names (not SELECT *)
+            // - LDAP-style filters (without quotes, or with parentheses)
+            String[] testQueries = {
+                // Try with explicit common attributes
+                "SELECT dn, cn, objectClass FROM " + baseDN,
+                // Try LDAP filter without quotes
+                "SELECT dn, cn FROM " + baseDN + " WHERE objectClass=*",
+                // Try with parentheses (LDAP filter style)
+                "SELECT dn, cn FROM " + baseDN + " WHERE (objectClass=*)",
+                // Try original SELECT *
+                "SELECT * FROM " + baseDN,
+                // Try with quoted baseDN (some drivers need this)
+                "SELECT dn, cn FROM \"" + baseDN + "\"",
+                // Try scope specification in query
+                "SELECT dn, cn FROM " + baseDN + " SCOPE subtree",
+                // Try root DSE query (should always work if connected)
+                "SELECT * FROM RootDSE",
+                // Try with LDAP URL style baseDN
+                "SELECT dn FROM o=" + baseDN
+            };
+
+            for (String testSql : testQueries) {
+                try {
+                    LOG.log(Level.WARNING, "--- Test Query ---");
+                    LOG.log(Level.WARNING, "SQL: " + testSql);
+
+                    try (Statement stmt = delegate.createStatement()) {
+                        stmt.setMaxRows(5); // Limit to 5 rows for testing
+                        LOG.log(Level.WARNING, "Statement created, executing query...");
+
+                        try (ResultSet rs = stmt.executeQuery(testSql)) {
+                            LOG.log(Level.WARNING, "Query executed, ResultSet class: " + rs.getClass().getName());
+
+                            ResultSetMetaData meta = rs.getMetaData();
+                            int colCount = meta.getColumnCount();
+
+                            // Log columns from the result
+                            StringBuilder cols = new StringBuilder();
+                            for (int i = 1; i <= colCount; i++) {
+                                if (i > 1) cols.append(", ");
+                                cols.append(meta.getColumnName(i)).append("(").append(meta.getColumnTypeName(i)).append(")");
+                            }
+                            LOG.log(Level.WARNING, "Columns (" + colCount + "): " + cols);
+
+                            // Count rows and log first few
+                            int rowCount = 0;
+                            while (rs.next()) {
+                                rowCount++;
+                                if (rowCount <= 3 && colCount > 0) {
+                                    StringBuilder row = new StringBuilder();
+                                    for (int i = 1; i <= Math.min(colCount, 5); i++) {
+                                        if (i > 1) row.append(", ");
+                                        try {
+                                            String val = rs.getString(i);
+                                            row.append(meta.getColumnName(i)).append("=").append(
+                                                val != null ? (val.length() > 50 ? val.substring(0, 50) + "..." : val) : "null");
+                                        } catch (Exception e) {
+                                            row.append(meta.getColumnName(i)).append("=ERROR:" + e.getMessage());
+                                        }
+                                    }
+                                    LOG.log(Level.WARNING, "Row " + rowCount + ": " + row);
+                                }
+                            }
+                            LOG.log(Level.WARNING, "Total rows: " + rowCount);
+
+                            // If we got data, we're done testing
+                            if (rowCount > 0) {
+                                LOG.log(Level.WARNING, "=== Test successful! Data retrieved ===");
+                                return;
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    LOG.log(Level.WARNING, "Query failed: " + e.getClass().getName() + ": " + e.getMessage());
+                    // Get more details from SQLException
+                    if (e instanceof SQLException) {
+                        SQLException se = (SQLException) e;
+                        LOG.log(Level.WARNING, "  SQL State: " + se.getSQLState());
+                        LOG.log(Level.WARNING, "  Error Code: " + se.getErrorCode());
+                        Throwable cause = se.getCause();
+                        while (cause != null) {
+                            LOG.log(Level.WARNING, "  Caused by: " + cause.getClass().getName() + ": " + cause.getMessage());
+                            cause = cause.getCause();
+                        }
+                    }
+                    e.printStackTrace();
+                }
+            }
+
+            LOG.log(Level.WARNING, "=== All JDBC test queries returned 0 rows ===");
+
+            // Try direct JNDI LDAP to see if the issue is with JDBC-LDAP driver
+            testDirectJndi();
+
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Test query setup failed: " + e.getClass().getName() + ": " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Test LDAP connection directly using JNDI to bypass the JDBC-LDAP driver.
+     * This helps determine if the issue is with the driver or the LDAP connection itself.
+     */
+    private void testDirectJndi() {
+        LOG.log(Level.WARNING, "=== Testing Direct JNDI LDAP ===");
+        try {
+            // Use the original URL passed from LdapDriver (contains all parameters including credentials)
+            String url = originalUrl;
+            if (url == null) {
+                url = delegate.getMetaData().getURL();
+            }
+
+            String maskedUrl = url != null ? url.replaceAll("(SECURITY_CREDENTIALS:=)[^&]*", "$1****") : "null";
+            LOG.log(Level.WARNING, "Using URL (masked): " + maskedUrl);
+
+            // Parse the URL to extract LDAP connection details
+            // Format: jdbc:ldap://host:port/baseDN?params
+            if (url == null || !url.startsWith("jdbc:ldap://")) {
+                LOG.log(Level.WARNING, "Cannot parse JDBC URL for JNDI test");
+                return;
+            }
+
+            String ldapUrl = url.replace("jdbc:ldap://", "ldap://");
+            int queryStart = ldapUrl.indexOf('?');
+            String ldapHost;
+            String params = "";
+            if (queryStart > 0) {
+                ldapHost = ldapUrl.substring(0, queryStart);
+                params = ldapUrl.substring(queryStart + 1);
+            } else {
+                ldapHost = ldapUrl;
+            }
+
+            // Extract just host:port
+            int slashPos = ldapHost.indexOf('/', 7); // After "ldap://"
+            if (slashPos > 0) {
+                ldapHost = ldapHost.substring(0, slashPos);
+            }
+
+            LOG.log(Level.WARNING, "LDAP URL for JNDI: " + ldapHost);
+            LOG.log(Level.WARNING, "BaseDN: " + baseDN);
+
+            // Extract credentials from params (they should already be decoded by LdapDriver)
+            String principal = null;
+            String credentials = null;
+            for (String param : params.split("&")) {
+                if (param.startsWith("SECURITY_PRINCIPAL:=")) {
+                    principal = param.substring(20);  // Already decoded by LdapDriver
+                } else if (param.startsWith("SECURITY_CREDENTIALS:=")) {
+                    credentials = param.substring(22);  // Already decoded by LdapDriver
+                }
+            }
+
+            LOG.log(Level.WARNING, "Principal: " + principal);
+            LOG.log(Level.WARNING, "Credentials length: " + (credentials != null ? credentials.length() : 0));
+
+            // Set up JNDI environment
+            Hashtable<String, String> env = new Hashtable<>();
+            env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory");
+            env.put(Context.PROVIDER_URL, ldapHost + "/" + baseDN);
+
+            if (principal != null && !principal.isEmpty()) {
+                env.put(Context.SECURITY_AUTHENTICATION, "simple");
+                env.put(Context.SECURITY_PRINCIPAL, principal);
+                env.put(Context.SECURITY_CREDENTIALS, credentials != null ? credentials : "");
+            }
+
+            // Disable referral following
+            env.put(Context.REFERRAL, "ignore");
+
+            LOG.log(Level.WARNING, "Creating JNDI context...");
+            DirContext ctx = new InitialDirContext(env);
+            LOG.log(Level.WARNING, "JNDI context created successfully!");
+
+            // Try a simple search
+            SearchControls searchControls = new SearchControls();
+            searchControls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+            searchControls.setCountLimit(5);
+            searchControls.setReturningAttributes(new String[]{"dn", "cn", "objectClass"});
+
+            LOG.log(Level.WARNING, "Executing JNDI search with filter (objectClass=*)...");
+            NamingEnumeration<SearchResult> results = ctx.search("", "(objectClass=*)", searchControls);
+
+            int count = 0;
+            while (results.hasMore()) {
+                SearchResult sr = results.next();
+                count++;
+                if (count <= 3) {
+                    LOG.log(Level.WARNING, "JNDI Result " + count + ": " + sr.getNameInNamespace());
+                    Attributes attrs = sr.getAttributes();
+                    if (attrs != null) {
+                        NamingEnumeration<?> attrEnum = attrs.getAll();
+                        while (attrEnum.hasMore()) {
+                            LOG.log(Level.WARNING, "  Attr: " + attrEnum.next());
+                        }
+                    }
+                }
+            }
+            LOG.log(Level.WARNING, "JNDI search returned " + count + " results");
+
+            ctx.close();
+            LOG.log(Level.WARNING, "=== JNDI test complete ===");
+
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "JNDI test failed: " + e.getClass().getName() + ": " + e.getMessage());
+            Throwable cause = e.getCause();
+            while (cause != null) {
+                LOG.log(Level.WARNING, "  Caused by: " + cause.getClass().getName() + ": " + cause.getMessage());
+                cause = cause.getCause();
+            }
+            e.printStackTrace();
         }
     }
 
@@ -122,7 +419,13 @@ public class LdapConnection implements Connection {
 
     @Override
     public Statement createStatement() throws SQLException {
-        return new LdapStatement(delegate.createStatement(), baseDN, objectClasses, maxRows);
+        // Use JNDI-based statement that bypasses the broken Octetstring JDBC-LDAP driver
+        if (ldapUrl != null) {
+            return new JndiLdapStatement(this, ldapUrl, baseDN, principal, credentials,
+                    objectClasses, attributes, maxRows, useObjectCategory, skipFilter);
+        }
+        // Fall back to old LdapStatement if URL parsing failed
+        return new LdapStatement(delegate.createStatement(), baseDN, objectClasses, attributes, maxRows, useObjectCategory, skipFilter);
     }
 
     @Override
@@ -189,7 +492,12 @@ public class LdapConnection implements Connection {
 
     @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency) throws SQLException {
-        return new LdapStatement(delegate.createStatement(resultSetType, resultSetConcurrency), baseDN, objectClasses, maxRows);
+        // Use JNDI-based statement
+        if (ldapUrl != null) {
+            return new JndiLdapStatement(this, ldapUrl, baseDN, principal, credentials,
+                    objectClasses, attributes, maxRows, useObjectCategory, skipFilter);
+        }
+        return new LdapStatement(delegate.createStatement(resultSetType, resultSetConcurrency), baseDN, objectClasses, attributes, maxRows, useObjectCategory, skipFilter);
     }
 
     @Override
@@ -224,7 +532,12 @@ public class LdapConnection implements Connection {
 
     @Override
     public Statement createStatement(int resultSetType, int resultSetConcurrency, int resultSetHoldability) throws SQLException {
-        return new LdapStatement(delegate.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability), baseDN, objectClasses, maxRows);
+        // Use JNDI-based statement
+        if (ldapUrl != null) {
+            return new JndiLdapStatement(this, ldapUrl, baseDN, principal, credentials,
+                    objectClasses, attributes, maxRows, useObjectCategory, skipFilter);
+        }
+        return new LdapStatement(delegate.createStatement(resultSetType, resultSetConcurrency, resultSetHoldability), baseDN, objectClasses, attributes, maxRows, useObjectCategory, skipFilter);
     }
 
     @Override

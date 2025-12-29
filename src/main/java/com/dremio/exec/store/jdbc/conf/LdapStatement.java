@@ -27,18 +27,25 @@ public class LdapStatement implements Statement {
     private final Statement delegate;
     private final String baseDN;
     private final String[] objectClasses;
+    private final String[] attributes;
     private final int maxRows;
+    private final boolean useObjectCategory;
+    private final boolean skipFilter;
 
-    public LdapStatement(Statement delegate, String baseDN, String[] objectClasses, int maxRows) {
+    public LdapStatement(Statement delegate, String baseDN, String[] objectClasses, String[] attributes, int maxRows, boolean useObjectCategory, boolean skipFilter) {
         this.delegate = delegate;
         this.baseDN = baseDN;
         this.objectClasses = objectClasses != null ? objectClasses : new String[0];
+        this.attributes = attributes != null ? attributes : new String[0];
         this.maxRows = maxRows;
+        this.useObjectCategory = useObjectCategory;
+        this.skipFilter = skipFilter;
     }
 
     /**
      * Transform the SQL query to be compatible with the LDAP JDBC driver.
      * Replaces objectClass table names with the baseDN and adds objectClass filter.
+     * Also transforms SELECT clause to SELECT * to avoid schema mismatch issues.
      */
     private String transformQuery(String sql) {
         if (sql == null) {
@@ -86,40 +93,111 @@ public class LdapStatement implements Statement {
             transformedSql = transformedSql.replaceAll("\\b" + Pattern.quote(alias) + "\\.", "");
         }
 
+        // Replace SELECT columns with SELECT * for LDAP driver compatibility
+        // The JDBC-LDAP driver may not handle explicit column lists well
+        Pattern selectPattern = Pattern.compile("^\\s*SELECT\\s+.+?\\s+FROM\\b", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+        Matcher selectMatcher = selectPattern.matcher(transformedSql);
+        if (selectMatcher.find() && !transformedSql.toLowerCase().contains("count(")) {
+            String originalSelect = selectMatcher.group();
+            transformedSql = selectMatcher.replaceFirst("SELECT * FROM");
+            LOG.log(Level.WARNING, "Replaced SELECT columns with SELECT * for LDAP compatibility");
+        }
+
         // Replace FROM tableName with FROM baseDN
-        // Use single quotes - the JDBC-LDAP driver treats FROM as a string value (search base)
-        // not as a SQL identifier (which would use double quotes)
-        String quotedBaseDN = "'" + baseDN + "'";
-        String fromReplacement = "FROM " + quotedBaseDN;
+        // NOTE: Do NOT quote the baseDN - the JDBC-LDAP driver uses the FROM value directly
+        // as the LDAP search base. Quotes would be included in the search base and break the query.
+        String fromReplacement = "FROM " + baseDN;
         transformedSql = FROM_PATTERN.matcher(transformedSql).replaceFirst(fromReplacement);
 
-        // Add objectClass filter to the WHERE clause
+        // Add objectClass/objectCategory filter to the WHERE clause
         // This is critical for Active Directory to avoid referral errors ("Operations Error")
         // The JDBC-LDAP driver translates WHERE clauses to LDAP filters
-        String objectClassFilter = "objectClass='" + matchedObjectClass + "'";
-
-        // Check if there's already a WHERE clause
-        Pattern wherePattern = Pattern.compile("\\bWHERE\\b", Pattern.CASE_INSENSITIVE);
-        if (wherePattern.matcher(transformedSql).find()) {
-            // Append to existing WHERE clause with AND
-            transformedSql = wherePattern.matcher(transformedSql).replaceFirst("WHERE " + objectClassFilter + " AND ");
+        // For AD, objectCategory is often more reliable than objectClass
+        if (skipFilter) {
+            LOG.log(Level.WARNING, "Skip filter mode enabled - no objectClass/objectCategory filter added");
         } else {
-            // Check if there's an ORDER BY clause
-            Pattern orderByPattern = Pattern.compile("\\bORDER\\s+BY\\b", Pattern.CASE_INSENSITIVE);
-            Matcher orderByMatcher = orderByPattern.matcher(transformedSql);
-            if (orderByMatcher.find()) {
-                // Insert WHERE before ORDER BY
-                transformedSql = transformedSql.substring(0, orderByMatcher.start()) +
-                                 "WHERE " + objectClassFilter + " " +
-                                 transformedSql.substring(orderByMatcher.start());
+            String filterAttribute = useObjectCategory ? "objectCategory" : "objectClass";
+            String objectClassFilter = filterAttribute + "='" + matchedObjectClass + "'";
+            LOG.log(Level.WARNING, "Using filter: " + objectClassFilter);
+
+            // Skip adding filter if it's already in the SQL (user provided their own filter)
+            boolean sqlHasFilter = transformedSql.toLowerCase().contains(filterAttribute.toLowerCase() + "=") ||
+                                   transformedSql.toLowerCase().contains(filterAttribute.toLowerCase() + " =");
+
+            if (!sqlHasFilter) {
+                // Check if there's already a WHERE clause
+                Pattern wherePattern = Pattern.compile("\\bWHERE\\b", Pattern.CASE_INSENSITIVE);
+                if (wherePattern.matcher(transformedSql).find()) {
+                    // Append to existing WHERE clause with AND
+                    transformedSql = wherePattern.matcher(transformedSql).replaceFirst("WHERE " + objectClassFilter + " AND ");
+                } else {
+                    // Check if there's an ORDER BY clause
+                    Pattern orderByPattern = Pattern.compile("\\bORDER\\s+BY\\b", Pattern.CASE_INSENSITIVE);
+                    Matcher orderByMatcher = orderByPattern.matcher(transformedSql);
+                    if (orderByMatcher.find()) {
+                        // Insert WHERE before ORDER BY
+                        transformedSql = transformedSql.substring(0, orderByMatcher.start()) +
+                                         "WHERE " + objectClassFilter + " " +
+                                         transformedSql.substring(orderByMatcher.start());
+                    } else {
+                        // Append WHERE at the end
+                        transformedSql = transformedSql + " WHERE " + objectClassFilter;
+                    }
+                }
             } else {
-                // Append WHERE at the end
-                transformedSql = transformedSql + " WHERE " + objectClassFilter;
+                LOG.log(Level.WARNING, "SQL already contains filter attribute, skipping auto-filter");
             }
         }
 
         LOG.log(Level.WARNING, "Transformed SQL: " + transformedSql);
         return transformedSql;
+    }
+
+    /**
+     * Extract column names from SELECT clause.
+     */
+    private String[] extractSelectColumns(String sql) {
+        if (sql == null) return new String[0];
+
+        // Match SELECT ... FROM
+        Pattern selectPattern = Pattern.compile(
+            "^\\s*SELECT\\s+(.+?)\\s+FROM\\b",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+        );
+        Matcher matcher = selectPattern.matcher(sql);
+        if (!matcher.find()) {
+            return new String[0];
+        }
+
+        String selectPart = matcher.group(1).trim();
+
+        // Handle count(*) and other aggregates
+        if (selectPart.toLowerCase().contains("count(")) {
+            return new String[0]; // Don't wrap aggregate queries
+        }
+
+        // Handle SELECT *
+        if (selectPart.equals("*")) {
+            return attributes; // Return all attributes
+        }
+
+        // Split by comma and clean up
+        String[] parts = selectPart.split(",");
+        String[] columns = new String[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            String col = parts[i].trim();
+            // Remove table prefix (e.g., "person.givenName" -> "givenName")
+            int dotIndex = col.lastIndexOf('.');
+            if (dotIndex >= 0) {
+                col = col.substring(dotIndex + 1);
+            }
+            // Remove quotes
+            col = col.replace("\"", "").trim();
+            columns[i] = col;
+        }
+
+        LOG.log(Level.WARNING, "Extracted SELECT columns: " + String.join(", ", columns));
+        return columns;
     }
 
     @Override
@@ -133,7 +211,19 @@ public class LdapStatement implements Statement {
                 LOG.log(Level.WARNING, "Could not set maxRows: " + e.getMessage());
             }
         }
-        return delegate.executeQuery(transformQuery(sql));
+
+        String transformedSql = transformQuery(sql);
+        ResultSet delegateResult = delegate.executeQuery(transformedSql);
+
+        // Extract the columns from the original SQL to normalize the ResultSet metadata
+        String[] requestedColumns = extractSelectColumns(sql);
+        if (requestedColumns.length > 0) {
+            LOG.log(Level.WARNING, "Wrapping ResultSet with " + requestedColumns.length +
+                    " requested columns: " + String.join(", ", requestedColumns));
+            return new LdapResultSet(delegateResult, requestedColumns);
+        }
+
+        return delegateResult;
     }
 
     @Override

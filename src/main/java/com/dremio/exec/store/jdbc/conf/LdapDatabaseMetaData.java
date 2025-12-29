@@ -34,6 +34,64 @@ public class LdapDatabaseMetaData implements DatabaseMetaData {
         if (this.attributes.length > 0) {
             LOG.log(Level.INFO, "Attributes: " + String.join(", ", this.attributes));
         }
+        // Dump underlying driver metadata for debugging
+        dumpUnderlyingMetadata();
+    }
+
+    /**
+     * Dump the underlying LDAP JDBC driver's metadata for debugging.
+     */
+    private void dumpUnderlyingMetadata() {
+        try {
+            LOG.log(Level.WARNING, "=== LDAP Driver Native Metadata ===");
+
+            // Try to get tables from the underlying driver
+            try (ResultSet rs = delegate.getTables(null, null, "%", null)) {
+                if (rs != null) {
+                    int count = 0;
+                    StringBuilder tables = new StringBuilder();
+                    while (rs.next()) {
+                        if (count > 0) tables.append(", ");
+                        tables.append(rs.getString("TABLE_NAME"));
+                        count++;
+                        if (count >= 50) {
+                            tables.append("... (truncated)");
+                            break;
+                        }
+                    }
+                    LOG.log(Level.WARNING, "Native tables (" + count + "): " + tables);
+                } else {
+                    LOG.log(Level.WARNING, "Native getTables returned null");
+                }
+            } catch (SQLException e) {
+                LOG.log(Level.WARNING, "Native getTables failed: " + e.getMessage());
+            }
+
+            // Try to get columns for the first configured objectClass
+            if (this.objectClasses.length > 0) {
+                String firstTable = this.objectClasses[0];
+                try (ResultSet rs = delegate.getColumns(null, null, firstTable, "%")) {
+                    if (rs != null) {
+                        int count = 0;
+                        StringBuilder cols = new StringBuilder();
+                        while (rs.next()) {
+                            if (count > 0) cols.append(", ");
+                            String colName = rs.getString("COLUMN_NAME");
+                            String typeName = rs.getString("TYPE_NAME");
+                            cols.append(colName).append("(").append(typeName).append(")");
+                            count++;
+                        }
+                        LOG.log(Level.WARNING, "Native columns for '" + firstTable + "' (" + count + "): " + cols);
+                    } else {
+                        LOG.log(Level.WARNING, "Native getColumns returned null for '" + firstTable + "'");
+                    }
+                } catch (SQLException e) {
+                    LOG.log(Level.WARNING, "Native getColumns failed for '" + firstTable + "': " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING, "Error dumping native metadata: " + e.getMessage());
+        }
     }
 
     @Override
