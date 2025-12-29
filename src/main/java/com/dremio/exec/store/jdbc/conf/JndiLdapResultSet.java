@@ -15,6 +15,9 @@ import java.util.logging.Logger;
 public class JndiLdapResultSet implements ResultSet {
     private static final Logger LOG = Logger.getLogger(JndiLdapResultSet.class.getName());
 
+    // Dremio has a 32000 byte field size limit. We truncate to 31000 to leave margin for encoding.
+    private static final int MAX_FIELD_SIZE_BYTES = 31000;
+
     private final List<Map<String, Object>> data;
     private final String[] columnNames;
     private final JndiLdapResultSetMetaData metaData;
@@ -168,7 +171,23 @@ public class JndiLdapResultSet implements ResultSet {
     public String getString(int columnIndex) throws SQLException {
         Object value = getColumnValue(columnIndex);
         if (value == null) return null;
-        return value.toString();
+        String str = value.toString();
+
+        // Truncate if the value exceeds Dremio's field size limit
+        if (str.length() > MAX_FIELD_SIZE_BYTES) {
+            // Try to truncate at a comma boundary for multi-valued attributes
+            int truncateAt = MAX_FIELD_SIZE_BYTES - 20; // Leave room for suffix
+            int lastComma = str.lastIndexOf(',', truncateAt);
+            if (lastComma > truncateAt - 1000) {
+                // Found a comma reasonably close to the limit
+                truncateAt = lastComma;
+            }
+            String colName = columnIndex <= columnNames.length ? columnNames[columnIndex - 1] : "column" + columnIndex;
+            LOG.log(Level.WARNING, "Truncating field '" + colName + "' from " + str.length() + " to " + truncateAt + " bytes");
+            str = str.substring(0, truncateAt) + "... [TRUNCATED]";
+        }
+
+        return str;
     }
 
     @Override
