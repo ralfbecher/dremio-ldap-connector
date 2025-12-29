@@ -91,7 +91,7 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
   @Tag(12)
   @DisplayMetadata(label = "Attributes (comma-separated)")
   @NotMetadataImpacting
-  public String attributes = "dn,cn,objectClass,sAMAccountName,displayName,mail,givenName,sn,memberOf,member,description,userPrincipalName,distinguishedName";
+  public String attributes = "dn,cn,name,objectClass,sAMAccountName,displayName,mail,givenName,sn,memberOf,member,description,info,userPrincipalName,distinguishedName";
 
   @Tag(13)
   @DisplayMetadata(label = "Max rows per query (LDAP size limit)")

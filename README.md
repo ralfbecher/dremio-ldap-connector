@@ -95,6 +95,7 @@ These become your tables and columns in Dremio.
 |-----------|-------------|
 | `dn` | Distinguished Name (unique identifier) |
 | `cn` | Common Name |
+| `name` | Name (RDN value, often same as cn) |
 | `objectClass` | Object type |
 | `sAMAccountName` | Windows login name (pre-Windows 2000) |
 | `displayName` | Full display name |
@@ -104,6 +105,7 @@ These become your tables and columns in Dremio.
 | `memberOf` | Groups the object belongs to |
 | `member` | Members of a group |
 | `description` | Description field |
+| `info` | General information/notes field |
 | `userPrincipalName` | UPN format (user@domain.com) |
 | `distinguishedName` | Full DN path |
 
