@@ -51,21 +51,23 @@ After installation, add a new "LDAP" source in Dremio:
 
 ### Connection Settings
 
-| Field | Description | Example |
+| Field | Description | Default |
 |-------|-------------|---------|
-| LDAP Host | LDAP/AD server hostname | `dc01.example.com` |
-| Port | LDAP port | `389` (LDAP), `636` (LDAPS), `3268` (AD Global Catalog) |
+| LDAP Host | LDAP/AD server hostname | |
+| Port | LDAP port: `389` (LDAP), `636` (LDAPS), `3268` (AD Global Catalog) | `3268` |
 | Base DN | Base Distinguished Name | `DC=example,DC=com` |
 | Bind DN (User) | User DN for authentication | `CN=svc_dremio,OU=Service,DC=example,DC=com` |
 | Password | Password for authentication | |
 | Use SSL | Enable SSL/TLS | `true` for port 636 |
 
-### Active Directory Recommendations
+### Active Directory Defaults
 
-| Setting | Recommended Value | Notes |
-|---------|-------------------|-------|
+The connector is pre-configured for Active Directory:
+
+| Setting | Default | Notes |
+|---------|---------|-------|
 | Port | `3268` | Global Catalog - queries entire forest |
-| Use objectCategory filter | `true` | More efficient for AD queries |
+| Use objectCategory filter | `true` | Indexed in AD, faster queries |
 | Skip objectClass filter | `false` | Enable filtering by object type |
 
 ### Schema Settings (Defaults optimized for AD)

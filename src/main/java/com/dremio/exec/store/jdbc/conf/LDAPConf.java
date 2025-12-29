@@ -41,8 +41,8 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
   public String host;
 
   @Tag(2)
-  @DisplayMetadata(label = "Port")
-  public int port = 389;
+  @DisplayMetadata(label = "Port (3268 for AD Global Catalog)")
+  public int port = 3268;
 
   @NotBlank
   @Tag(3)
@@ -99,9 +99,9 @@ public class LDAPConf extends AbstractArpConf<LDAPConf> {
   public int maxRows = 500;
 
   @Tag(14)
-  @DisplayMetadata(label = "Use objectCategory filter (for Active Directory)")
+  @DisplayMetadata(label = "Use objectCategory filter (recommended for AD)")
   @NotMetadataImpacting
-  public boolean useObjectCategory = false;
+  public boolean useObjectCategory = true;
 
   @Tag(15)
   @DisplayMetadata(label = "Skip objectClass/objectCategory filter (debug mode)")
